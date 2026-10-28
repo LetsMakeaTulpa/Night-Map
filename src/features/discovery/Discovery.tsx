@@ -154,7 +154,7 @@ export function FilterBar({ compact = false }: { compact?: boolean }) {
 
   // Presets are navigation shortcuts, not claims that a service is open,
   // accessible, or safe to enter. They only change the existing local filters.
-  const applyPreset = (preset: 'essentials' | 'after-dark' | 'urban-discovery') => {
+  const applyPreset = (preset: 'essentials' | 'after-dark' | 'connections') => {
     const common = {
       openNow: false,
       freeOnly: false,
@@ -174,12 +174,12 @@ export function FilterBar({ compact = false }: { compact?: boolean }) {
     } else {
       actions.setFilter({
         ...common,
-        categories: ['history', 'passage', 'popos', 'pedestrian_connection', 'urban_clue', 'research_lead'],
+        categories: ['transit', 'pedestrian_connection'],
       });
     }
   };
 
-  const isPresetActive = (preset: 'essentials' | 'after-dark' | 'urban-discovery') => {
+  const isPresetActive = (preset: 'essentials' | 'after-dark' | 'connections') => {
     const selected = [...state.filters.categories].sort().join('|');
     const conditionsAreNeutral =
       !state.filters.openNow &&
@@ -195,7 +195,7 @@ export function FilterBar({ compact = false }: { compact?: boolean }) {
         && !state.filters.afterDark;
     }
     if (preset === 'after-dark') return selected === 'popos' && state.filters.afterDark;
-    return selected === ['history', 'passage', 'popos', 'pedestrian_connection', 'urban_clue', 'research_lead'].sort().join('|')
+    return selected === ['transit', 'pedestrian_connection'].sort().join('|')
       && !state.filters.afterDark;
   };
 
@@ -205,7 +205,7 @@ export function FilterBar({ compact = false }: { compact?: boolean }) {
         <span className="filter-presets-label">Quick views</span>
         <button type="button" className={`button ghost tiny ${isPresetActive('essentials') ? 'is-active' : ''}`} aria-pressed={isPresetActive('essentials')} onClick={() => applyPreset('essentials')}>Essentials</button>
         <button type="button" className={`button ghost tiny ${isPresetActive('after-dark') ? 'is-active' : ''}`} aria-pressed={isPresetActive('after-dark')} onClick={() => applyPreset('after-dark')}>After-dark POPOS</button>
-        <button type="button" className={`button ghost tiny ${isPresetActive('urban-discovery') ? 'is-active' : ''}`} aria-pressed={isPresetActive('urban-discovery')} onClick={() => applyPreset('urban-discovery')}>Urban discovery</button>
+        <button type="button" className={`button ghost tiny ${isPresetActive('connections') ? 'is-active' : ''}`} aria-pressed={isPresetActive('connections')} onClick={() => applyPreset('connections')}>Transit & connections</button>
       </div>
       <p className="filter-presets-note">Quick views change filters only; they do not confirm current hours, entry rights, or accessibility.</p>
       <div className="filter-chips">
