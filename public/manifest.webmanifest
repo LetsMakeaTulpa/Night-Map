@@ -1,0 +1,15 @@
+{
+  "name": "Night Map — San Francisco after dark",
+  "short_name": "Night Map",
+  "description": "A field instrument for San Francisco after dark: resources, walking routes, and private field notes.",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "portrait-primary",
+  "background_color": "#0A0F12",
+  "theme_color": "#0A0F12",
+  "icons": [
+    { "src": "/icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any" },
+    { "src": "/icon-maskable.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "maskable" }
+  ]
+}

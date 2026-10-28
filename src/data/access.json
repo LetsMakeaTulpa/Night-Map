@@ -1,0 +1,732 @@
+{
+  "generatedAt": "2026-10-27T15:46:59.664Z",
+  "note": "5 access records checked page by page, plus 1 records attached to places that already exist. Each fact names the page it came from; where a source is silent, the value is null and the interface says the source does not say.",
+  "geocoder": {
+    "name": "Nominatim (OpenStreetMap)",
+    "url": "https://nominatim.openstreetmap.org/",
+    "method": "One search query per record, addressQuery, format=jsonv2, limit=1, one request per second",
+    "note": "Coordinates come from OpenStreetMap addresses, so each record keeps the query it used and the OSM object that matched. Night Map does not hand-place these markers, and a poor match is visible in this file rather than hidden in the code."
+  },
+  "places": [
+    {
+      "id": "place:curated:phc-every-day-connect",
+      "name": "Project Homeless Connect — Every Day Connect",
+      "category": "comms",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          -122.4227932,
+          37.7837957
+        ]
+      },
+      "address": "1031 Franklin Street, 2nd floor",
+      "addressType": "street_address",
+      "description": "A drop-in service hub. Its published service list includes receiving mail for people who do not have a secure address, for income and housing paperwork, and it publishes a resource phone line. Both facts come from the provider's own page; the page shows no publication date.",
+      "accessibility": {
+        "status": "not_documented",
+        "note": "The provider page does not document step-free access or facilities, so Night Map claims none."
+      },
+      "sourceIds": [
+        "src:phc-every-day-connect",
+        "src:one-degree-sf"
+      ],
+      "status": "active",
+      "locationPrecision": "geocoded_address",
+      "neighborhood": "Western Addition",
+      "createdAt": "2026-10-27",
+      "updatedAt": "2026-10-27"
+    },
+    {
+      "id": "place:curated:compass-family-services-hub",
+      "name": "Compass Family Services — 37 Grove Street hub",
+      "category": "comms",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          -122.4157585,
+          37.7786785
+        ]
+      },
+      "address": "37 Grove Street",
+      "addressType": "street_address",
+      "description": "A family services hub. Compass publishes that families using Compass as their mailing address can collect mail here, and that it serves families who are homeless or at risk of homelessness in San Francisco.",
+      "accessibility": {
+        "status": "not_documented",
+        "note": "Accessibility is not documented on the page Night Map read."
+      },
+      "sourceIds": [
+        "src:compass-family-services"
+      ],
+      "status": "active",
+      "locationPrecision": "geocoded_address",
+      "neighborhood": "Civic Center",
+      "createdAt": "2026-10-27",
+      "updatedAt": "2026-10-27"
+    },
+    {
+      "id": "place:curated:maria-x-martinez-health-resource-center",
+      "name": "Maria X Martinez Health Resource Center",
+      "category": "medical",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          -122.410843,
+          37.7807411
+        ]
+      },
+      "address": "555 Stevenson Street",
+      "addressType": "street_address",
+      "description": "A walk-in centre run by the San Francisco Department of Public Health. The City publishes that adults — particularly people without stable housing — can walk in for minor illness or injury, and lists urgent care, basic medical care, mental health support, wound care, dental and foot care.",
+      "accessibility": {
+        "status": "not_documented",
+        "note": "The City page does not document step-free access or adaptive facilities, so Night Map claims none."
+      },
+      "sourceIds": [
+        "src:sfdph-maria-martinez",
+        "src:one-degree-sf"
+      ],
+      "status": "active",
+      "locationPrecision": "geocoded_address",
+      "neighborhood": "South of Market",
+      "createdAt": "2026-10-27",
+      "updatedAt": "2026-10-27"
+    },
+    {
+      "id": "place:curated:healthright360-street-medicine",
+      "name": "HealthRIGHT 360 street medicine — Monday stop",
+      "category": "medical",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          -122.4071663,
+          37.7666297
+        ]
+      },
+      "address": "225 Potrero Avenue (Martin de Porres House of Hospitality)",
+      "addressType": "street_address",
+      "description": "One published weekly stop of HealthRIGHT 360's mobile and street medicine programme. The provider publishes drop-in care here on Mondays and describes the service as first come, first served with no appointment, available to San Francisco residents who are uninsured, Medi-Cal eligible, experiencing homelessness or unstably housed.",
+      "accessibility": {
+        "status": "not_documented",
+        "note": "A mobile service point has no documented accessibility, and the provider page does not describe the site itself."
+      },
+      "sourceIds": [
+        "src:healthright360-street-medicine"
+      ],
+      "status": "active",
+      "locationPrecision": "geocoded_address",
+      "neighborhood": "Potrero Hill",
+      "createdAt": "2026-10-27",
+      "updatedAt": "2026-10-27"
+    },
+    {
+      "id": "place:curated:sfpl-chinatown-branch",
+      "name": "Chinatown / Him Mark Lai Branch Library",
+      "category": "tech",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          -122.4102159,
+          37.7952217
+        ]
+      },
+      "address": "1135 Powell Street",
+      "addressType": "street_address",
+      "description": "A branch of the San Francisco Public Library. SFPL publishes that laptop borrowing is available at this branch for in-library use and that wireless is available in all of its buildings. It publishes the prices it charges for printing and copying, and a daily free credit for card holders.",
+      "accessibility": {
+        "status": "not_documented",
+        "note": "SFPL publishes accessibility information per branch; Night Map has not transcribed it for this branch, so nothing is claimed."
+      },
+      "sourceIds": [
+        "src:sfpl-laptops",
+        "src:sfpl-printing",
+        "src:sfpl-wifi"
+      ],
+      "status": "active",
+      "locationPrecision": "geocoded_address",
+      "neighborhood": "Chinatown",
+      "createdAt": "2026-10-27",
+      "updatedAt": "2026-10-27"
+    }
+  ],
+  "resources": [
+    {
+      "id": "res:curated:phc-every-day-connect-mail",
+      "name": "Mail receiving and resource line",
+      "category": "comms",
+      "serviceTypes": [
+        "mail_address",
+        "resource_phone_line"
+      ],
+      "cost": {
+        "kind": "unknown",
+        "note": "The provider page does not state a fee. A third-party service directory lists mail services as free; Night Map has not confirmed that with the provider, so it does not call this free."
+      },
+      "eligibility": "People who do not have a secure mailing address. The provider describes the service as receiving income and housing paperwork, not as a general postbox.",
+      "intake": "The provider page does not describe an intake procedure. A third-party directory says to register in person during drop-in hours or by phone appointment.",
+      "hours": null,
+      "hoursNote": "No hours are stored: the provider publishes none, and the drop-in windows that exist come from a third-party directory. Night Map will not compute an open-now answer from a directory listing.",
+      "availability": {
+        "status": "unknown",
+        "note": "There is no live feed for mail. Nothing on a map can confirm that post is waiting or that a counter is staffed."
+      },
+      "officialContact": {
+        "phone": "1-855-588-7968",
+        "website": "https://www.projecthomelessconnect.org/programs/edc/"
+      },
+      "sourceIds": [
+        "src:phc-every-day-connect",
+        "src:one-degree-sf"
+      ],
+      "sourceUpdatedAt": null,
+      "lastVerifiedAt": "2026-10-27",
+      "verification": {
+        "status": "recently_verified",
+        "label": "Provider page read",
+        "note": "Read on 27 Oct 2026. The page displays no publication date, so this record carries the date it was read and nothing older."
+      },
+      "details": {
+        "maintainedBy": "Project Homeless Connect",
+        "note": "The provider page gives a street address on Franklin Street, 2nd floor. A third-party directory states there are no citizenship requirements and no fee; neither is on the provider page, so neither is asserted here."
+      },
+      "friction": [
+        {
+          "kind": "intake_required",
+          "label": "Registration",
+          "value": "Register in person during drop-in hours, or call to make an appointment",
+          "sourceId": "src:one-degree-sf",
+          "asOf": "2026-10-27",
+          "note": "This step comes from a third-party directory, because the provider page does not describe intake. Treat it as a lead and telephone first."
+        },
+        {
+          "kind": "id_required",
+          "label": "ID or citizenship",
+          "value": null,
+          "sourceId": "src:phc-every-day-connect",
+          "asOf": "2026-10-27",
+          "note": "The provider page states no ID or citizenship rule in either direction. Blank means the source is silent, not that no requirement exists."
+        },
+        {
+          "kind": "hours_access",
+          "label": "Published drop-in window",
+          "value": "Tuesday and Wednesday, 9:30am–3:30pm",
+          "sourceId": "src:one-degree-sf",
+          "asOf": "2026-10-27",
+          "note": "From a directory listing rather than the provider, so it is shown here as a note and deliberately not turned into open-now hours."
+        },
+        {
+          "kind": "other",
+          "label": "Phone line",
+          "value": "855-588-7968 — callers may leave a message for a service facilitator",
+          "sourceId": "src:phc-every-day-connect",
+          "asOf": "2026-10-27",
+          "note": "This is the organisation's resource line, not a personal voicemail number issued to an individual."
+        }
+      ],
+      "license": "Provider website — facts paraphrased, no content republished",
+      "placeId": "place:curated:phc-every-day-connect"
+    },
+    {
+      "id": "res:curated:compass-family-services-mail",
+      "name": "Mail collection for families using Compass as their address",
+      "category": "comms",
+      "serviceTypes": [
+        "mail_address"
+      ],
+      "cost": {
+        "kind": "unknown",
+        "note": "The page does not state whether mail collection costs anything, so no price is claimed."
+      },
+      "eligibility": "Families experiencing homelessness or at risk of homelessness in San Francisco.",
+      "intake": "The page says families use Compass as their mailing address; it does not spell out how that is set up. Call before relying on it.",
+      "hours": null,
+      "hoursNote": "The published drop-in windows are split, with a midday closure. Night Map's hours model cannot represent that, so no hours are stored and this record will not answer open now.",
+      "availability": {
+        "status": "unknown",
+        "note": "No live availability exists for mail collection."
+      },
+      "officialContact": {
+        "phone": "415-644-0504",
+        "website": "https://www.compass-sf.org/get-help"
+      },
+      "sourceIds": [
+        "src:compass-family-services"
+      ],
+      "sourceUpdatedAt": null,
+      "lastVerifiedAt": "2026-10-27",
+      "verification": {
+        "status": "recently_verified",
+        "label": "Provider page read",
+        "note": "Read on 27 Oct 2026. The page displays no publication date."
+      },
+      "details": {
+        "maintainedBy": "Compass Family Services",
+        "note": "The page lists mail pickup alongside drop-in hours but does not say the service is free, nor how a family establishes Compass as its mailing address."
+      },
+      "friction": [
+        {
+          "kind": "availability",
+          "label": "Drop-in windows",
+          "value": "Mon 9am–12pm and 1–5pm; Tue 9am–12pm and 3–5pm (closed every fourth Tuesday); Wed–Fri 9am–12pm and 1–5pm",
+          "sourceId": "src:compass-family-services",
+          "asOf": "2026-10-27",
+          "note": "Split hours with a midday closure. Rather than flatten that into one continuous block, Night Map stores no hours for this record."
+        },
+        {
+          "kind": "id_required",
+          "label": "ID or citizenship",
+          "value": null,
+          "sourceId": "src:compass-family-services",
+          "asOf": "2026-10-27",
+          "note": "Not stated on the page Night Map read."
+        },
+        {
+          "kind": "intake_required",
+          "label": "Who can use it",
+          "value": "Families experiencing homelessness or at risk of homelessness, using Compass as their mailing address",
+          "sourceId": "src:compass-family-services",
+          "asOf": "2026-10-27",
+          "note": "Households without children are not covered by this listing; the hub describes itself in terms of families."
+        }
+      ],
+      "license": "Provider website — facts paraphrased, no content republished",
+      "placeId": "place:curated:compass-family-services-hub"
+    },
+    {
+      "id": "res:curated:maria-x-martinez-urgent-care",
+      "name": "Walk-in urgent and basic care",
+      "category": "medical",
+      "serviceTypes": [
+        "drop_in",
+        "emergency_care"
+      ],
+      "cost": {
+        "kind": "varies",
+        "note": "The City publishes that some patients may owe a copayment, and does not publish a price list. A third-party directory states no one is denied services for inability to pay; that claim is not on the City page."
+      },
+      "eligibility": "Adults, with the City page naming people without stable housing first. The City page does not state an insurance requirement.",
+      "intake": "Walk in. The City page describes the centre as a walk-in service rather than an appointment service.",
+      "hours": {
+        "kind": "weekly_by_day",
+        "days": {
+          "1": {
+            "opens": "08:30",
+            "closes": "16:30"
+          },
+          "2": {
+            "opens": "08:30",
+            "closes": "16:30"
+          },
+          "3": {
+            "opens": "10:00",
+            "closes": "16:30"
+          },
+          "4": {
+            "opens": "08:30",
+            "closes": "16:30"
+          },
+          "5": {
+            "opens": "08:30",
+            "closes": "16:30"
+          },
+          "6": {
+            "opens": "08:30",
+            "closes": "16:30"
+          }
+        },
+        "daysKnown": true
+      },
+      "hoursNote": "Hours are the City's published schedule, including the later 10am Wednesday opening. The page says the centre is closed on City holidays.",
+      "availability": {
+        "status": "unknown",
+        "note": "No wait-time, capacity or queue information is published, so none is shown. Published hours say nothing about how long a walk-in will take."
+      },
+      "officialContact": {
+        "phone": "628-217-5800",
+        "website": "https://www.sf.gov/location--maria-x-martinez-health-resource-center"
+      },
+      "sourceIds": [
+        "src:sfdph-maria-martinez",
+        "src:one-degree-sf"
+      ],
+      "sourceUpdatedAt": null,
+      "lastVerifiedAt": "2026-10-27",
+      "verification": {
+        "status": "official_source",
+        "label": "City page",
+        "note": "Services and hours are transcribed from the City's own location page, read on 27 Oct 2026. The page displays no publication date."
+      },
+      "details": {
+        "maintainedBy": "San Francisco Department of Public Health",
+        "program": "San Francisco Health Network",
+        "note": "The City page is written for people without stable housing and names urgent care, basic medical care, mental health support, wound care, dental care and foot care."
+      },
+      "friction": [
+        {
+          "kind": "id_required",
+          "label": "ID",
+          "value": null,
+          "sourceId": "src:sfdph-maria-martinez",
+          "asOf": "2026-10-27",
+          "note": "The City page documents walk-in access but does not state an ID requirement. Night Map does not turn a neighbouring page's statement about vaccination into a rule for general care."
+        },
+        {
+          "kind": "payment_methods",
+          "label": "Payment",
+          "value": "Some patients may owe a copayment; a third-party directory says no one is denied care for inability to pay",
+          "sourceId": "src:one-degree-sf",
+          "asOf": "2026-10-27",
+          "note": "The City page states no payment rule. The no-denial claim comes from a service directory, so it is attributed rather than presented as City policy."
+        },
+        {
+          "kind": "availability",
+          "label": "Holiday closure",
+          "value": "Closed on City holidays",
+          "sourceId": "src:sfdph-maria-martinez",
+          "asOf": "2026-10-27",
+          "note": "The City page names this exception to the published weekday hours."
+        }
+      ],
+      "license": "City of San Francisco page — facts paraphrased, no content republished",
+      "placeId": "place:curated:maria-x-martinez-health-resource-center"
+    },
+    {
+      "id": "res:curated:healthright360-street-medicine-monday",
+      "name": "Street medicine van — Monday street site",
+      "category": "medical",
+      "serviceTypes": [
+        "drop_in",
+        "harm_reduction",
+        "emergency_care"
+      ],
+      "cost": {
+        "kind": "free",
+        "note": "The provider lists the programme for people who are uninsured or Medi-Cal eligible; no fee is published for being seen."
+      },
+      "eligibility": "San Francisco residents who are Medi-Cal eligible, uninsured, experiencing homelessness or unstably housed. The provider page states this directly.",
+      "intake": "Drop in. The provider page says first come, first served and that no appointment is necessary.",
+      "hours": {
+        "kind": "weekly",
+        "days": [
+          1
+        ],
+        "opens": "08:30",
+        "closes": "16:30",
+        "daysKnown": true,
+        "rawDays": "Mondays"
+      },
+      "hoursNote": "The provider publishes the programme's hours as Monday to Friday, 8:30am–4:30pm, and names a different street site for each weekday. This record covers the Monday site only; the other sites are listed below but are not plotted, because Night Map has coordinates for one of them, not five.",
+      "availability": {
+        "status": "unknown",
+        "note": "No live tracking exists for a van. A published weekly schedule is not confirmation that the service ran today."
+      },
+      "officialContact": {
+        "phone": null,
+        "website": "https://www.healthright360.org/program/mobile-and-street-medicine-program/"
+      },
+      "sourceIds": [
+        "src:healthright360-street-medicine"
+      ],
+      "sourceUpdatedAt": null,
+      "lastVerifiedAt": "2026-10-27",
+      "verification": {
+        "status": "recently_verified",
+        "label": "Provider page read",
+        "note": "Read on 27 Oct 2026. The page displays no publication date, and the published site list is the kind of thing that changes seasonally."
+      },
+      "details": {
+        "maintainedBy": "HealthRIGHT 360",
+        "note": "Other published weekday sites are: Tuesday near 1563 Mission Street; Wednesday near 24th and Capp; Thursday at 1202 Marine Drive; Friday at 3250 24th Street. The provider page does not give coordinates, so Night Map plots only the Monday site it could place, and reads the list as a lead rather than a timetable."
+      },
+      "friction": [
+        {
+          "kind": "availability",
+          "label": "Mobile schedule",
+          "value": "Drop-in, first come first served, no appointment; a different street site is published for each weekday",
+          "sourceId": "src:healthright360-street-medicine",
+          "asOf": "2026-10-27",
+          "note": "A rotating street schedule is the opposite of a fixed door. Treat this marker as an address that may host the service on Mondays, not as a facility."
+        },
+        {
+          "kind": "id_required",
+          "label": "ID",
+          "value": null,
+          "sourceId": "src:healthright360-street-medicine",
+          "asOf": "2026-10-27",
+          "note": "The provider page does not state whether ID is required. It does state who the programme is for, so it is recorded that way instead of guessing at documentation rules."
+        },
+        {
+          "kind": "intake_required",
+          "label": "Who it serves",
+          "value": "Medi-Cal eligible, uninsured, experiencing homelessness or unstably housed residents of San Francisco",
+          "sourceId": "src:healthright360-street-medicine",
+          "asOf": "2026-10-27",
+          "note": "This is the provider's own eligibility statement, quoted rather than interpreted."
+        }
+      ],
+      "license": "Provider website — facts paraphrased, no content republished",
+      "placeId": "place:curated:healthright360-street-medicine"
+    },
+    {
+      "id": "res:curated:sfpl-chinatown-tech",
+      "name": "Laptops, Wi-Fi, printing and copying",
+      "category": "tech",
+      "serviceTypes": [
+        "library_laptop_loan",
+        "wifi",
+        "printing",
+        "scanning",
+        "faxing"
+      ],
+      "cost": {
+        "kind": "free",
+        "note": "Borrowing a laptop is free with an SFPL library card; Wi-Fi is free; scanning to email or USB and faxing to US numbers are free. Printing and copying are charged, with a daily free credit for card holders — see the friction lines."
+      },
+      "eligibility": "A current SFPL library card for laptop borrowing. The FAQ excludes Welcome, Digital Access and Visitor cards, and requires outstanding fees of $50 or less. No photo ID is stated.",
+      "intake": "Bring the library card to the branch. For children 12 and younger, a parent or guardian on the child's record must sign at the Circulation Desk with staff present.",
+      "hours": null,
+      "hoursNote": "No hours are stored: SFPL publishes opening hours per branch, and Night Map has not transcribed this branch's. Laptop loans end before closing — they cannot be checked out in the last 30 minutes and must be returned at least 15 minutes before the branch shuts.",
+      "availability": {
+        "status": "unknown",
+        "note": "SFPL publishes no live count of available laptops or working printers, so Night Map shows none. A branch can be open with every laptop already out."
+      },
+      "officialContact": {
+        "phone": null,
+        "website": "https://sfpl.libanswers.com/faq/133417"
+      },
+      "sourceIds": [
+        "src:sfpl-laptops",
+        "src:sfpl-printing",
+        "src:sfpl-wifi"
+      ],
+      "sourceUpdatedAt": null,
+      "lastVerifiedAt": "2026-10-27",
+      "verification": {
+        "status": "recently_verified",
+        "label": "Provider pages read",
+        "note": "The laptop FAQ was last updated 14 Nov 2025 and the printing FAQ 14 Sep 2026, as displayed on those pages; both were read on 27 Oct 2026. SFPL's Wi-Fi FAQ was last updated in January 2019, so the network name recorded from it may be stale."
+      },
+      "details": {
+        "maintainedBy": "San Francisco Public Library",
+        "note": "Laptop use and desktop use share a two-hour daily total. Printing and copying stations exist at every library location except the Bookmobiles, and the free credit does not apply to email print jobs."
+      },
+      "friction": [
+        {
+          "kind": "true_price",
+          "label": "Printing or copying, black and white",
+          "value": "$0.10 per page",
+          "sourceId": "src:sfpl-printing",
+          "asOf": "2026-10-27",
+          "note": "The provider's published rate, from a page last updated 14 Sep 2026."
+        },
+        {
+          "kind": "true_price",
+          "label": "Printing or copying, colour",
+          "value": "$0.40 per page",
+          "sourceId": "src:sfpl-printing",
+          "asOf": "2026-10-27",
+          "note": "The provider's published rate."
+        },
+        {
+          "kind": "free_allowance",
+          "label": "Free daily credit",
+          "value": "$2 per library-card holder per day — about 20 black-and-white pages or five colour pages",
+          "sourceId": "src:sfpl-printing",
+          "asOf": "2026-10-27",
+          "note": "Card holders log in with the card number; email print jobs do not qualify for the credit, and anything above the credit is charged."
+        },
+        {
+          "kind": "id_required",
+          "label": "What is required",
+          "value": "A library card, not photo ID: outstanding fees must be $50 or less",
+          "sourceId": "src:sfpl-laptops",
+          "asOf": "2026-10-27",
+          "note": "The FAQ states a library-card requirement and a fee threshold, and states no photo-ID requirement. Anyone without a card should ask at the desk what can be done, which the FAQ does not cover."
+        },
+        {
+          "kind": "hours_access",
+          "label": "Laptop loan window",
+          "value": "In-library use only, up to two hours",
+          "sourceId": "src:sfpl-laptops",
+          "asOf": "2026-10-27",
+          "note": "Laptops are not taken home in this programme. The two-hour cap is shared with desktop computer use for the day."
+        }
+      ],
+      "license": "Provider website — facts paraphrased, no content republished",
+      "placeId": "place:curated:sfpl-chinatown-branch"
+    },
+    {
+      "id": "res:curated:sfpl-main-tech",
+      "name": "Laptops, teen devices, Wi-Fi and printing",
+      "category": "tech",
+      "serviceTypes": [
+        "library_laptop_loan",
+        "wifi",
+        "printing",
+        "scanning",
+        "faxing"
+      ],
+      "cost": {
+        "kind": "free",
+        "note": "Laptop borrowing is free with an SFPL library card and Wi-Fi is free; scanning and faxing to US numbers are free. Printing is charged beyond a daily free credit — see the friction lines."
+      },
+      "eligibility": "A current SFPL library card for laptop borrowing, excluding Welcome, Digital Access and Visitor cards, with outstanding fees of $50 or less. For children 12 and younger, a parent or guardian on the record must sign at the Circulation Desk with staff present.",
+      "intake": "Main Library is one of the branches where SFPL publishes laptop borrowing, and its Mix space lends laptops and iPads to teenagers.",
+      "hours": {
+        "kind": "weekly_by_day",
+        "days": {
+          "0": {
+            "opens": "12:00",
+            "closes": "18:00"
+          },
+          "1": {
+            "opens": "09:00",
+            "closes": "18:00"
+          },
+          "2": {
+            "opens": "09:00",
+            "closes": "20:00"
+          },
+          "3": {
+            "opens": "09:00",
+            "closes": "20:00"
+          },
+          "4": {
+            "opens": "09:00",
+            "closes": "20:00"
+          },
+          "5": {
+            "opens": "12:00",
+            "closes": "18:00"
+          },
+          "6": {
+            "opens": "10:00",
+            "closes": "18:00"
+          }
+        },
+        "daysKnown": true
+      },
+      "hoursNote": "These are the branch's published opening hours. Lending stops earlier: laptops cannot be checked out in the last 30 minutes and must be back at least 15 minutes before closing.",
+      "availability": {
+        "status": "unknown",
+        "note": "No published count of free laptops or working printers exists, so none is shown."
+      },
+      "officialContact": {
+        "phone": null,
+        "website": "https://sfpl.libanswers.com/faq/133417"
+      },
+      "sourceIds": [
+        "src:sfpl-laptops",
+        "src:sfpl-printing",
+        "src:sfpl-wifi",
+        "src:sfpl-main"
+      ],
+      "sourceUpdatedAt": null,
+      "lastVerifiedAt": "2026-10-27",
+      "verification": {
+        "status": "recently_verified",
+        "label": "Provider pages read",
+        "note": "Rules from SFPL's laptop FAQ (last updated 14 Nov 2025) and rates from its printing FAQ (14 Sep 2026), both read on 27 Oct 2026."
+      },
+      "details": {
+        "maintainedBy": "San Francisco Public Library",
+        "note": "SFPL publishes that its laptop and mobile-hotspot take-home lending programme ended on 15 Oct 2019, so no take-home device is claimed here. The FAQ says The Mix at Main lends laptops and iPads to teenagers but does not state an iPad loan period."
+      },
+      "friction": [
+        {
+          "kind": "true_price",
+          "label": "Printing or copying, black and white",
+          "value": "$0.10 per page",
+          "sourceId": "src:sfpl-printing",
+          "asOf": "2026-10-27",
+          "note": "The provider's published rate."
+        },
+        {
+          "kind": "true_price",
+          "label": "Printing or copying, colour",
+          "value": "$0.40 per page",
+          "sourceId": "src:sfpl-printing",
+          "asOf": "2026-10-27",
+          "note": "The provider's published rate."
+        },
+        {
+          "kind": "free_allowance",
+          "label": "Free daily credit",
+          "value": "$2 per library-card holder per day",
+          "sourceId": "src:sfpl-printing",
+          "asOf": "2026-10-27",
+          "note": "About 20 black-and-white pages or five colour pages, and it does not apply to email print jobs."
+        },
+        {
+          "kind": "hours_access",
+          "label": "Laptop loan window",
+          "value": "In-library use only, up to two hours, shared with desktop computer use for the day",
+          "sourceId": "src:sfpl-laptops",
+          "asOf": "2026-10-27",
+          "note": "The library cannot lend a device in its last 30 minutes of opening."
+        },
+        {
+          "kind": "id_required",
+          "label": "What is required",
+          "value": "A library card, not photo ID, and fees of $50 or less outstanding",
+          "sourceId": "src:sfpl-laptops",
+          "asOf": "2026-10-27",
+          "note": "Blank on photo ID: the FAQ does not mention one, so Night Map does not claim either way beyond what the FAQ states about cards."
+        }
+      ],
+      "license": "Provider website — facts paraphrased, no content republished",
+      "placeId": "place:curated:sfpl-main-library"
+    }
+  ],
+  "geocodes": {
+    "place:curated:phc-every-day-connect": {
+      "query": "1031 Franklin St, San Francisco, CA 94109",
+      "coordinates": [
+        -122.4227932,
+        37.7837957
+      ],
+      "osmMatch": "way/761313525",
+      "displayName": "1031, Franklin Street, Western Addition, San Francisco, California, 94109, United States",
+      "retrievedAt": "2026-10-27"
+    },
+    "place:curated:compass-family-services-hub": {
+      "query": "37 Grove St, San Francisco, CA 94102",
+      "coordinates": [
+        -122.4157585,
+        37.7786785
+      ],
+      "osmMatch": "way/225853133",
+      "displayName": "37, Grove Street, Civic Center, San Francisco, California, 94102, United States",
+      "retrievedAt": "2026-10-27"
+    },
+    "place:curated:maria-x-martinez-health-resource-center": {
+      "query": "555 Stevenson St, San Francisco, CA 94103",
+      "coordinates": [
+        -122.410843,
+        37.7807411
+      ],
+      "osmMatch": "way/43100743",
+      "displayName": "555, Stevenson Street, South of Market, Tenderloin, San Francisco, California, 94103, United States",
+      "retrievedAt": "2026-10-27"
+    },
+    "place:curated:healthright360-street-medicine": {
+      "query": "225 Potrero Ave, San Francisco, CA 94103",
+      "coordinates": [
+        -122.4071663,
+        37.7666297
+      ],
+      "osmMatch": "way/256464532",
+      "displayName": "225, Potrero Avenue, Potrero Hill, Mission, San Francisco, California, 94103, United States",
+      "retrievedAt": "2026-10-27"
+    },
+    "place:curated:sfpl-chinatown-branch": {
+      "query": "1135 Powell St, San Francisco, CA 94108",
+      "coordinates": [
+        -122.4102159,
+        37.7952217
+      ],
+      "osmMatch": "way/162056246",
+      "displayName": "Chinatown / Him Mark Lai Branch Library, 1135, Powell Street, Chinatown, San Francisco, California, 94108, United States",
+      "retrievedAt": "2026-10-27"
+    }
+  }
+}

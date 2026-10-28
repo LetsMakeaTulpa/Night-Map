@@ -1,0 +1,83 @@
+{
+ "generatedAt": "2026-10-27T13:49:17.506Z",
+ "generatedBy": "node scripts/fetch-incidents.mjs",
+ "coordinatePrecisionMetres": 40,
+ "droppedFields": [
+  "service_details",
+  "service_notes",
+  "status_notes",
+  "resolution",
+  "report_narrative",
+  "call_notes",
+  "responses"
+ ],
+ "excludedTypePatterns": [
+  "homeless",
+  "encampment",
+  "unhous",
+  "mental",
+  "psych",
+  "welfare",
+  "medical",
+  "medic\\b",
+  "crisis",
+  "suicide",
+  "overdose",
+  "substance",
+  "drug",
+  "alcohol|intoxicat|drunk",
+  "needle|syringe",
+  "shelter",
+  "assault",
+  "rape|sexual",
+  "domestic",
+  "abuse",
+  "missing",
+  "child",
+  "juvenile",
+  "person.*(down|injured)",
+  "stalking|trespass",
+  "person",
+  "suspect|wanted",
+  "arrest|citation|booking"
+ ],
+ "feeds": [
+  {
+   "id": "calls",
+   "layerId": "calls-recent",
+   "sourceId": "src:sfgov-calls-realtime",
+   "dataset": "gnap-fj3t",
+   "name": "Law Enforcement Dispatched Calls for Service: Real-Time",
+   "rows": 525,
+   "window": "dispatched calls that closed within 48 hours of retrieval",
+   "newest": "2026-10-27T05:21:24.000",
+   "oldest": "2026-10-25T13:45:08.000",
+   "lag": "about 8 hours old",
+   "dropped": {
+    "sensitiveCall": 770,
+    "excludedCategory": 565,
+    "noLocation": 9,
+    "outsideFootprint": 871
+   },
+   "notLive": "This is not live 911 and carries no audio. It is a published record of dispatched calls, and it is incomplete while calls are open."
+  },
+  {
+   "id": "cases311",
+   "layerId": "cases-311",
+   "sourceId": "src:sfgov-cases311",
+   "dataset": "vw6y-z8j6",
+   "name": "311 Cases",
+   "rows": 2358,
+   "window": "311 cases opened in the last 7 days, capped at 400 per service type",
+   "newest": "2026-10-26T23:52:07.000",
+   "oldest": "2026-10-20T13:50:31.000",
+   "lag": "about 14 hours old",
+   "dropped": {
+    "excludedCategory": 910,
+    "outsideFootprint": 871
+   },
+   "notLive": "The dataset is published nightly; a request may already be resolved or scheduled."
+  }
+ ],
+ "note": "Both feeds are City of San Francisco open data (PDDL). Coordinates are snapped to about 40 m, street addresses and free-text details are not stored, and categories describing a person rather than a place are excluded before publication."
+}

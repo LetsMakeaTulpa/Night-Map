@@ -1,0 +1,36 @@
+{
+ "sourceId": "src:osm-buildings",
+ "generatedAt": "2026-10-27T12:58:34.287Z",
+ "generatedBy": "node scripts/fetch-buildings.mjs",
+ "snapshotAt": "2026-10-27T12:54:48Z",
+ "bbox": [
+  37.7585,
+  -122.4275,
+  37.7975,
+  -122.3905
+ ],
+ "tileZoom": 14,
+ "minZoom": 14,
+ "tileKeys": [
+  "14/2620/6331",
+  "14/2620/6332",
+  "14/2620/6333",
+  "14/2621/6331",
+  "14/2621/6332",
+  "14/2621/6333"
+ ],
+ "counts": {
+  "buildings": 13975,
+  "withHeightTag": 9996,
+  "withLevels": 812,
+  "guessed": 3167,
+  "parts": 730,
+  "tooSmall": 65
+ },
+ "bytes": {
+  "total": 3386197,
+  "largest": 694034
+ },
+ "pathTemplate": "/buildings/{z}/{x}/{y}.json",
+ "heightNote": "Heights come from a height tag where mappers set one, from building:levels otherwise, and from a footprint-type default when neither exists. They are render heights for a visual layer, not measurements, and they say nothing about accessibility, entrances or ground-floor use."
+}

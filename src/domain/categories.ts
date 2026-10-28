@@ -1,0 +1,250 @@
+import type { CategoryId } from './types';
+
+export interface CategoryDef {
+  id: CategoryId;
+  label: string;
+  short: string;
+  /** Category accents are used alongside icons, shapes and labels — never alone. */
+  color: string;
+  icon: string;
+  description: string;
+  layerGroup: 'resources' | 'context';
+  defaultVisible: boolean;
+  /** Categories without records in this release are shown honestly as empty. */
+  serviceNote: string | null;
+}
+
+/**
+ * Marker families are configuration, not renderer logic: adding a category means
+ * adding an entry here, not editing the map.
+ */
+export const CATEGORIES: CategoryDef[] = [
+  {
+    id: 'food',
+    label: 'Food & groceries',
+    short: 'Food',
+    color: '#E0A458',
+    icon: 'M9 3v6.5a2.5 2.5 0 0 1-5 0V3M6.5 12v9M17 3c1.8 1.6 2.4 4.4 1.2 6.5-.5.9-1.3 1.5-2.2 1.7V21',
+    description: 'Meals, pantries and groceries. A marker records a service, not tonight’s opening.',
+    layerGroup: 'resources',
+    defaultVisible: true,
+    serviceNote: null,
+  },
+  {
+    id: 'water',
+    label: 'Drinking water',
+    short: 'Water',
+    color: '#6FB3C9',
+    icon: 'M12 2.8c3.6 4.3 6.2 7.4 6.2 10.4a6.2 6.2 0 0 1-12.4 0c0-3 2.6-6.1 6.2-10.4Z',
+    description: 'Public drinking fountains and bottle fillers. City inventory records; working condition is not live.',
+    layerGroup: 'resources',
+    defaultVisible: true,
+    serviceNote: null,
+  },
+  {
+    id: 'bathroom',
+    label: 'Public restrooms',
+    short: 'Restroom',
+    color: '#8496D8',
+    icon: 'M6 21V6a2 2 0 0 1 2-2h8a2 2 0 0 1 2 2v15M4.5 21h15M9.5 8.5h5M10 13h4v5h-4z',
+    description: 'Publicly accessible restrooms, including Pit Stop sites. Hours are published hours, not live access.',
+    layerGroup: 'resources',
+    defaultVisible: true,
+    serviceNote: null,
+  },
+  {
+    id: 'hygiene',
+    label: 'Showers & hygiene',
+    short: 'Hygiene',
+    color: '#C08BC4',
+    icon: 'M4 20V8.5A3.5 3.5 0 0 1 7.5 5M4 12h9.5A2.5 2.5 0 0 1 16 14.5V20M12 7.5h.01M14.5 5h.01M17 7h.01',
+    description: 'Showers and hygiene services. No verified records are installed in this release.',
+    layerGroup: 'resources',
+    defaultVisible: false,
+    serviceNote: 'No source-backed shower or hygiene records are installed in this release.',
+  },
+  {
+    id: 'laundry',
+    label: 'Laundry',
+    short: 'Laundry',
+    color: '#A7BFA3',
+    icon: 'M5 3.5h14v17H5zM12 8.5a4 4 0 1 0 0 8 4 4 0 0 0 0-8ZM7.8 6.2h.01',
+    description: 'Laundry access. No verified records are installed in this release.',
+    layerGroup: 'resources',
+    defaultVisible: false,
+    serviceNote: 'No source-backed laundry records are installed in this release.',
+  },
+  {
+    id: 'shelter',
+    label: 'Shelter & overnight',
+    short: 'Shelter',
+    color: '#D98B7A',
+    icon: 'M3 20V9.4L12 4l9 5.4V20M2.5 20h19M7.5 20v-6.2h9V20',
+    description: 'Shelters and overnight programs. Bed availability is never shown unless a provider confirms it.',
+    layerGroup: 'resources',
+    defaultVisible: true,
+    serviceNote: null,
+  },
+  {
+    id: 'services',
+    label: 'Drop-in & social services',
+    short: 'Services',
+    color: '#C8B27C',
+    icon: 'M12 3.2a8.8 8.8 0 1 0 0 17.6 8.8 8.8 0 0 0 0-17.6ZM12 8h.01M11.2 11.6H12v5.2h1',
+    description: 'Drop-in centers, case management and referrals. Hours are often unpublished.',
+    layerGroup: 'resources',
+    defaultVisible: true,
+    serviceNote: null,
+  },
+  {
+    id: 'medical',
+    label: 'Medical & behavioral health',
+    short: 'Medical',
+    color: '#7FB89B',
+    icon: 'M10 3h4v7h7v4h-7v7h-4v-7H3v-4h7z',
+    description: 'Emergency departments, clinics and health services.',
+    layerGroup: 'resources',
+    defaultVisible: true,
+    serviceNote: null,
+  },
+  {
+    id: 'transit',
+    label: 'Transit',
+    short: 'Transit',
+    color: '#8AA3B8',
+    icon: 'M5 3.5h14a1 1 0 0 1 1 1v12a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1v-12a1 1 0 0 1 1-1ZM4 10h16M7.5 14.5h.01M16.5 14.5h.01M6.5 17.5 5 21M17.5 17.5 19 21',
+    description: 'Muni stop locations from the City inventory. Not a live arrivals feed.',
+    layerGroup: 'context',
+    defaultVisible: true,
+    serviceNote: null,
+  },
+  {
+    id: 'charging',
+    label: 'Charging & connectivity',
+    short: 'Charging',
+    color: '#D8C86A',
+    icon: 'M13.2 2.2 4.6 13.6h5.6L10.8 21.8l8.6-11.4h-5.6z',
+    description: 'Power and Wi-Fi. Wi-Fi is recorded at the Main Library; public outlets are not confirmed.',
+    layerGroup: 'resources',
+    defaultVisible: false,
+    serviceNote: 'Wi-Fi is documented at the Main Library. No public charging points have been verified in this release.',
+  },
+  {
+    id: 'civic',
+    label: 'Public facilities',
+    short: 'Civic',
+    color: '#A9A2C9',
+    icon: 'M3 21h18M5 21V9.8h14V21M4 9.8 12 4l8 5.8M9.5 21v-6.5h5V21',
+    description: 'Libraries, community rooms and public buildings.',
+    layerGroup: 'resources',
+    defaultVisible: true,
+    serviceNote: null,
+  },
+  {
+    id: 'comms',
+    label: 'Mail, phone & an address',
+    short: 'Mail & phone',
+    color: '#E39AAE',
+    icon: 'M3 6.5h18v11H3zM3.6 7.2 12 12.9l8.4-5.7',
+    description:
+      'Where to receive mail without a fixed address, and published phone options. Only providers that state this on their own pages are recorded.',
+    layerGroup: 'resources',
+    defaultVisible: false,
+    serviceNote: null,
+  },
+  {
+    id: 'tech',
+    label: 'Devices, printing & internet',
+    short: 'Devices',
+    color: '#C9A2E8',
+    icon: 'M5 5.5h14v10H5zM3 18.4h18M9.5 15.5h5',
+    description:
+      'Borrowable computers, published printing prices and free Wi-Fi. Prices are the ones the provider publishes, with the free allowance stated where there is one.',
+    layerGroup: 'resources',
+    defaultVisible: false,
+    serviceNote: null,
+  },
+  {
+    id: 'history',
+    label: 'Historic features',
+    short: 'History',
+    color: '#9C8F7D',
+    icon: 'M3.5 21h17M6 21V10M12 21V10M18 21V10M3 10h18L12 3.5 3 10Z',
+    description: 'Named historic features mapped by OpenStreetMap. Names and locations only — no researched narrative.',
+    layerGroup: 'context',
+    defaultVisible: false,
+    serviceNote: null,
+  },
+  {
+    id: 'passage', label: 'Passages & cut-throughs', short: 'Passages', color: '#83C8A0',
+    icon: 'M4 20V7l8-4 8 4v13M8 20v-7h8v7',
+    description: 'Publicly intended pedestrian connections. Access is recorded per observation; unknown does not mean public.',
+    layerGroup: 'resources', defaultVisible: true, serviceNote: 'No verified passage inventory is installed yet. Add a private field observation to begin documenting one.',
+  },
+  {
+    id: 'popos', label: 'POPOS & public spaces', short: 'POPOS', color: '#73B79A',
+    icon: 'M3 20h18M5 20v-9l7-6 7 6v9M9 20v-5h6v5',
+    description: 'Designated public open spaces, including rooftop, interior and plaza spaces. Do not infer access from visibility.',
+    layerGroup: 'resources', defaultVisible: true, serviceNote: 'City-listed POPOS are installed where the official dataset has coordinates inside this release footprint. Hours and access are not live; confirm on site.',
+  },
+  {
+    id: 'pedestrian_connection', label: 'Stairs, ramps & connections', short: 'Connections', color: '#D8B67B',
+    icon: 'M4 20h4v-4h4v-4h4V8h4',
+    description: 'Pedestrian routes and vertical connections, with access and accessibility left unknown until observed.',
+    layerGroup: 'resources', defaultVisible: false, serviceNote: 'No verified micromapped connections are installed yet.',
+  },
+  {
+    id: 'urban_clue', label: 'Architectural & urban clues', short: 'Clues', color: '#B69ACB',
+    icon: 'M4 20V8l8-5 8 5v12M8 20v-6h8v6',
+    description: 'Visible architectural details and historical clues. A clue or lead is not proof of an underground feature.',
+    layerGroup: 'resources', defaultVisible: false, serviceNote: 'No researched clue records are installed yet.',
+  },
+  {
+    id: 'research_lead', label: 'Research leads', short: 'Leads', color: '#D3A36B',
+    icon: 'M12 3v4m0 10v4M3 12h4m10 0h4M5.6 5.6l2.8 2.8m8.8 8.8 2.8 2.8m0-14.4-2.8 2.8m-8.8 8.8-2.8 2.8',
+    description: 'Unverified hypotheses with a stated rationale and evidence trail; never presented as confirmed places.',
+    layerGroup: 'resources', defaultVisible: false, serviceNote: 'No research leads are installed yet.',
+  },
+];
+
+export const CATEGORY_BY_ID = new Map(CATEGORIES.map((c) => [c.id, c]));
+
+export const SWATCH = {
+  saved: '#EAE6DC',
+  observation: '#E4C36A',
+  route: '#7FD1C1',
+  selfLocation: '#F2EDE2',
+};
+
+export const SERVICE_TYPE_LABELS: Record<string, string> = {
+  prepared_meals: 'Prepared meals',
+  indoor_seating: 'Indoor seating',
+  senior_services: 'Senior services',
+  drinking_water: 'Drinking water',
+  bottle_filler: 'Bottle filler',
+  jug_filler: 'Jug filler',
+  public_restroom: 'Public restroom',
+  emergency_shelter: 'Emergency shelter',
+  overnight: 'Overnight program',
+  drop_in: 'Drop-in',
+  case_management: 'Case management',
+  peer_counseling: 'Peer counseling',
+  harm_reduction: 'Harm reduction',
+  housing_referral: 'Housing referral',
+  emergency_care: 'Emergency care',
+  hospital: 'Hospital',
+  library: 'Library',
+  wifi: 'Wi-Fi',
+  restroom: 'Restroom',
+  water: 'Water',
+  seating: 'Seating',
+  charging_outlets_unconfirmed: 'Outlets (unconfirmed)',
+  mail_address: 'Mail receiving',
+  resource_phone_line: 'Resource phone line',
+  library_laptop_loan: 'Laptop lending (in-library)',
+  printing: 'Printing',
+  scanning: 'Scanning',
+  faxing: 'Faxing',
+  community_program: 'Community program',
+  leadership_training: 'Leadership training',
+};

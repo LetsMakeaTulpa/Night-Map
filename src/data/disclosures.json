@@ -1,0 +1,105 @@
+{
+  "generatedAt": "2026-10-27",
+  "statement": "What the City itself publishes about what it collects, listed document by document. Read this as a map of the paperwork, not of the city: Night Map holds no camera, kiosk or sensor locations, because no official public register of them exists. Two things people assume are available are missing here. There is no City list or map of camera positions — the City publishes a department-by-department inventory of technologies, not where they are, and the Police Department has stated it will not create a registry of non-City cameras. And there is no City statement about what its street kiosks collect: the City's privacy pages are scoped to its websites, and Night Map could not verify a kiosk-specific policy, so it says nothing about kiosks rather than repeating another city's terms. Where a document does not say something important, that is listed next to what it does say.",
+  "entries": [
+    {
+      "id": "disc:coit-inventory",
+      "title": "Surveillance Technology Inventory",
+      "publisher": "Committee on Information Technology (COIT), City and County of San Francisco",
+      "url": "https://www.sf.gov/surveillance-technology-inventory",
+      "documentType": "inventory",
+      "dateShown": "2026-10-15",
+      "whatItCovers": "The City's own list of surveillance technologies currently identified under Administrative Code Chapter 19B, organised by department, with links to each surveillance impact report and policy. The page states departments are required to produce impact reports, policies and reports.",
+      "whatItDoesNotSay": "It is not a map or a camera register: no positions, counts per intersection or addresses are published. The City says the list covers technologies currently identified and will grow as more are identified, and it recognises exemptions from the ordinance's definition — so a technology's absence from this list is not evidence that it is not in use.",
+      "locationData": "not_a_location_register"
+    },
+    {
+      "id": "disc:coit-biannual-reports",
+      "title": "Biannual Surveillance Report Inventory",
+      "publisher": "Committee on Information Technology (COIT), City and County of San Francisco",
+      "url": "https://www.sf.gov/resource--2022--annual-surveillance-report-inventory",
+      "documentType": "report",
+      "dateShown": "2026-10-26",
+      "whatItCovers": "An index of department surveillance reports. The page states reports were annual from June 2019 until December 2024, and that since January 2025 departments must submit a report within the first twelve months after Board approval and every two years after that.",
+      "whatItDoesNotSay": "A list of reports is not a list of places. Night Map could not derive any citywide camera inventory from it, and does not try to.",
+      "locationData": "not_a_location_register"
+    },
+    {
+      "id": "disc:sfmta-19b-documents",
+      "title": "19B surveillance policy documents and reports",
+      "publisher": "San Francisco Municipal Transportation Agency (SFMTA)",
+      "url": "https://www.sfmta.com/reports/committee-information-technology-coit-19b-surveillance-policy-documents",
+      "documentType": "report",
+      "dateShown": "2022-11-29",
+      "whatItCovers": "Links to SFMTA policies, impact reports and annual reports for red-light cameras, security cameras, licence plate readers, taxi dashboard cameras and automated speed enforcement, including security-camera reports for 2022 to 2024 and a combined report for 2025.",
+      "whatItDoesNotSay": "It documents systems and their reporting obligations, not their positions. No camera locations are published in the documents Night Map read.",
+      "locationData": "none_published"
+    },
+    {
+      "id": "disc:sfmta-biannual-2026",
+      "title": "Municipal Transportation Agency Biannual Surveillance Report 2026",
+      "publisher": "San Francisco Municipal Transportation Agency (SFMTA), via sf.gov",
+      "url": "https://www.sf.gov/mta-all-technology-biannual-surveillance-report-2026",
+      "documentType": "report",
+      "dateShown": "2026-09-04",
+      "whatItCovers": "The report describes red-light and no-right-turn cameras photographing plates and drivers for citations; speed cameras photographing plates and issuing mailed citations; vehicle-mounted plate readers and bus-mounted transit-only-lane cameras; and fixed and mobile SFMTA security cameras capturing live and recorded video continuously. It states that speed cameras are triggered by speeding vehicles and do not record data unless triggered.",
+      "whatItDoesNotSay": "It describes systems and their purposes, not places, and it does not establish a single retention period for all SFMTA camera data. The Night Map footprint's streets cannot be annotated with these cameras from this document alone.",
+      "locationData": "none_published"
+    },
+    {
+      "id": "disc:sfpd-cameras-25-041",
+      "title": "Department notice 25-041: Access to Public Safety Cameras",
+      "publisher": "San Francisco Police Department",
+      "url": "https://www.sanfranciscopolice.org/your-sfpd/policies/department-bulletins-notices/25-041",
+      "documentType": "bulletin",
+      "dateShown": "2025-04-28",
+      "whatItCovers": "States that public safety camera footage is retained for 30 days unless the Department advises that longer retention is required for an active investigation, and limits police access to specified purposes through an approval procedure.",
+      "whatItDoesNotSay": "The Police Department labels this a department notice and says it is not an official representation of the published policy, directing readers to request the signed policy through its records portal. Night Map repeats the 30-day figure with that qualification attached, rather than as settled fact.",
+      "locationData": "none_published"
+    },
+    {
+      "id": "disc:sfpd-alpr-2024",
+      "title": "San Francisco begins installing automated licence plate readers",
+      "publisher": "City and County of San Francisco",
+      "url": "https://www.sf.gov/news--san-francisco-begins-installing-automated-license-plate-readers-disrupt-organized-theft-and",
+      "documentType": "news_release",
+      "dateShown": "2024-03-20",
+      "whatItCovers": "Announced a plan for 400 automated licence plate reader cameras at roughly 100 intersections, installed and maintained by a contractor and used by the Police Department, for purposes including identifying vehicles in criminal investigations. The announcement states the system would not use facial recognition and would not issue red-light or speed citations.",
+      "whatItDoesNotSay": "No list, map or register of the intersections was published, and Night Map could not verify one, so this app plots no licence-plate-reader locations and will not infer them from the camera announcement or any other layer. The release describes an announced programme, not every camera system in the city.",
+      "locationData": "none_published"
+    },
+    {
+      "id": "disc:sfpd-non-city-cameras",
+      "title": "Bureau Order 23-01: Non-City Entity Surveillance Cameras",
+      "publisher": "San Francisco Police Department",
+      "url": "https://www.sanfranciscopolice.org/your-sfpd/policies/bureau-order/23-01-1",
+      "documentType": "policy",
+      "dateShown": "2023-02-28",
+      "whatItCovers": "States that the Police Department does not currently have, and will not in future establish, a surveillance camera registry for cameras owned or operated by non-City entities.",
+      "whatItDoesNotSay": "It is a statement that no registry will exist for privately operated cameras. That is the reason Night Map has no private-camera layer: there is no official dataset to build one from, and this app does not build one by inference.",
+      "locationData": "none_published"
+    },
+    {
+      "id": "disc:sfdph-cctv-policy",
+      "title": "Department of Public Health: Closed Circuit Television Cameras surveillance technology policy",
+      "publisher": "San Francisco Department of Public Health",
+      "url": "https://www.sf.gov/department-of-public-health-closed-circuit-television-cameras-surveillance-technology-policy",
+      "documentType": "policy",
+      "dateShown": "2021-07-27",
+      "whatItCovers": "Describes the data types the Department's CCTV cameras may capture — video or images, dates and times, and geolocation — and sets out rules for access, security and sharing.",
+      "whatItDoesNotSay": "Night Map could not verify a retention period from the portion of the policy it read, and the policy publishes no camera locations.",
+      "locationData": "none_published"
+    },
+    {
+      "id": "disc:sfgov-privacy-policy",
+      "title": "Privacy policy for SF.gov",
+      "publisher": "Digital Services, City and County of San Francisco",
+      "url": "https://www.sf.gov/information--privacy-policy-sfgov",
+      "documentType": "privacy_statement",
+      "dateShown": null,
+      "whatItCovers": "Describes the information collected when a person visits SF.gov, including limited browser-provided information and site analytics. No publication date is displayed on the page.",
+      "whatItDoesNotSay": "It is scoped to the City's website. It is not a statement about public kiosks, street furniture or cameras, and Night Map does not present it as one. Similarly, the transport agency's terms of use cover its website and online payment services, not street hardware.",
+      "locationData": "not_a_location_register"
+    }
+  ]
+}

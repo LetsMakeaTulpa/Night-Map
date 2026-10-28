@@ -1,0 +1,22 @@
+{
+ "generatedAt": "2026-10-28T17:40:38.758Z",
+ "footprint": {
+  "name": "Downtown · SoMa · Tenderloin",
+  "bbox": [
+   -122.429,
+   37.7585,
+   -122.3905,
+   37.7975
+  ],
+  "note": "This release covers a central slice of San Francisco. It is not a citywide or complete directory."
+ },
+ "counts": {
+  "places": 248,
+  "historicFeatures": 72,
+  "popos": 81,
+  "resources": 177,
+  "transitStops": 605,
+  "sources": 29
+ },
+ "coverageNote": "Records come from a City asset inventory, a transit stop inventory and a small number of provider pages read by hand. Many categories have no records yet; the app says so instead of filling the gap."
+}
