@@ -181,6 +181,15 @@ export function FilterBar({ compact = false }: { compact?: boolean }) {
 
   const isPresetActive = (preset: 'essentials' | 'after-dark' | 'urban-discovery') => {
     const selected = [...state.filters.categories].sort().join('|');
+    const conditionsAreNeutral =
+      !state.filters.openNow &&
+      !state.filters.freeOnly &&
+      !state.filters.verifiedOnly &&
+      state.filters.maxWalkMinutes === 0 &&
+      !state.filters.nearTransit &&
+      !state.filters.accessibleOnly &&
+      !state.filters.query.trim();
+    if (!conditionsAreNeutral) return false;
     if (preset === 'essentials') {
       return selected === ['food', 'water', 'bathroom', 'shelter', 'services', 'medical', 'transit', 'civic'].sort().join('|')
         && !state.filters.afterDark;
