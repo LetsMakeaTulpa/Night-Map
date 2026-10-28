@@ -37,6 +37,55 @@ body,
   height: 100%;
 }
 
+.filter-presets {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  margin: 0 0 7px;
+}
+
+.filter-presets-label {
+  color: var(--muted);
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+  margin-right: 3px;
+}
+
+.filter-presets .button {
+  min-height: 30px;
+}
+
+.filter-presets .button.is-active {
+  color: var(--text);
+  border-color: var(--accent);
+  background: var(--accent-soft);
+}
+
+.filter-presets-note {
+  color: var(--muted);
+  font-size: 11px;
+  line-height: 1.4;
+  margin: 0 0 10px;
+  max-width: 64ch;
+}
+
+@media (max-width: 520px) {
+  .filter-presets {
+    gap: 5px;
+  }
+
+  .filter-presets-label {
+    flex-basis: 100%;
+  }
+
+  .filter-presets .button {
+    flex: 1 1 auto;
+  }
+}
+
 body {
   margin: 0;
   background: var(--ink-0);
