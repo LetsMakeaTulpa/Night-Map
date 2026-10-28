@@ -151,8 +151,54 @@ export function FilterBar({ compact = false }: { compact?: boolean }) {
   const { state, actions } = useStore();
   const [expanded, setExpanded] = useState(!compact);
   const active = activeFilterCount(state.filters);
+
+  // Presets are navigation shortcuts, not claims that a service is open,
+  // accessible, or safe to enter. They only change the existing local filters.
+  const applyPreset = (preset: 'essentials' | 'after-dark' | 'urban-discovery') => {
+    const common = {
+      openNow: false,
+      freeOnly: false,
+      verifiedOnly: false,
+      maxWalkMinutes: 0,
+      nearTransit: false,
+      accessibleOnly: false,
+      afterDark: false,
+    };
+    if (preset === 'essentials') {
+      actions.setFilter({
+        ...common,
+        categories: ['food', 'water', 'bathroom', 'shelter', 'services', 'medical', 'transit', 'civic'],
+      });
+    } else if (preset === 'after-dark') {
+      actions.setFilter({ ...common, categories: ['popos'], afterDark: true });
+    } else {
+      actions.setFilter({
+        ...common,
+        categories: ['history', 'passage', 'popos', 'pedestrian_connection', 'urban_clue', 'research_lead'],
+      });
+    }
+  };
+
+  const isPresetActive = (preset: 'essentials' | 'after-dark' | 'urban-discovery') => {
+    const selected = [...state.filters.categories].sort().join('|');
+    if (preset === 'essentials') {
+      return selected === ['food', 'water', 'bathroom', 'shelter', 'services', 'medical', 'transit', 'civic'].sort().join('|')
+        && !state.filters.afterDark;
+    }
+    if (preset === 'after-dark') return selected === 'popos' && state.filters.afterDark;
+    return selected === ['history', 'passage', 'popos', 'pedestrian_connection', 'urban_clue', 'research_lead'].sort().join('|')
+      && !state.filters.afterDark;
+  };
+
   return (
     <div className="filterbar">
+      <div className="filter-presets" aria-label="Quick map views">
+        <span className="filter-presets-label">Quick views</span>
+        <button type="button" className={`button ghost tiny ${isPresetActive('essentials') ? 'is-active' : ''}`} aria-pressed={isPresetActive('essentials')} onClick={() => applyPreset('essentials')}>Essentials</button>
+        <button type="button" className={`button ghost tiny ${isPresetActive('after-dark') ? 'is-active' : ''}`} aria-pressed={isPresetActive('after-dark')} onClick={() => applyPreset('after-dark')}>After-dark POPOS</button>
+        <button type="button" className={`button ghost tiny ${isPresetActive('urban-discovery') ? 'is-active' : ''}`} aria-pressed={isPresetActive('urban-discovery')} onClick={() => applyPreset('urban-discovery')}>Urban discovery</button>
+      </div>
+      <p className="filter-presets-note">Quick views change filters only; they do not confirm current hours, entry rights, or accessibility.</p>
       <div className="filter-chips">
         {CATEGORIES.map((category) => {
           const enabled = state.filters.categories.includes(category.id);
