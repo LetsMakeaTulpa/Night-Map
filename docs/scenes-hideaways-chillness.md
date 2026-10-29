@@ -30,7 +30,7 @@ A community-reported 0–100 summary derived only from dated visitor ratings. It
 ### Low-friction / complaint experience
 A separate community-reported 0–100 summary derived only from dated reports of unwanted interruption or complaints. A high score means contributors reported fewer interruptions in their visits; it does **not** predict that a future visitor will avoid complaints, security or law enforcement.
 
-Both ratings require at least three reports before the UI uses a substantive label. Confidence depends on sample size and freshness. Time bands (day/evening/late night) should remain visible, since conditions change across time.
+Both experience ratings require at least three reports before the UI uses a substantive label. A third independent rating, **public-access clarity**, records whether visitors found permission and access rules clear; it must never infer permission from vacancy or a lack of visible staff. Confidence depends on sample size and freshness. The model supports filtering ratings by day/evening/late-night, since conditions change across time.
 
 ### Official feeds remain contextual evidence
 The system does not combine calls, crime reports and 311 into one “danger” score. Counts are not population-adjusted rates and can reflect reporting practices, agency response, and unequal access to reporting. A 311 complaint may be resolved or misclassified; a dispatch is not proof of crime. Use counts, date ranges, source links and freshness, with clear caveats.
