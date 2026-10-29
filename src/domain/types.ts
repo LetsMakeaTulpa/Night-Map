@@ -19,7 +19,12 @@ export type CategoryId =
   | 'popos'
   | 'pedestrian_connection'
   | 'urban_clue'
-  | 'research_lead';
+  | 'research_lead'
+  | 'nightlife'
+  | 'counterculture'
+  | 'hangout'
+  | 'abandoned'
+  | 'mutual_aid';
 
 export type PointGeometry = { type: 'Point'; coordinates: [number, number] };
 export type LineGeometry = { type: 'LineString'; coordinates: [number, number][] };
