@@ -154,7 +154,7 @@ export function FilterBar({ compact = false }: { compact?: boolean }) {
 
   // Presets are navigation shortcuts, not claims that a service is open,
   // accessible, or safe to enter. They only change the existing local filters.
-  const applyPreset = (preset: 'essentials' | 'after-dark' | 'connections') => {
+  const applyPreset = (preset: 'essentials' | 'after-dark' | 'connections' | 'scenes') => {
     const common = {
       openNow: false,
       freeOnly: false,
@@ -171,15 +171,20 @@ export function FilterBar({ compact = false }: { compact?: boolean }) {
       });
     } else if (preset === 'after-dark') {
       actions.setFilter({ ...common, categories: ['popos'], afterDark: true });
-    } else {
+    } else if (preset === 'connections') {
       actions.setFilter({
         ...common,
         categories: ['transit', 'pedestrian_connection'],
       });
+    } else {
+      actions.setFilter({
+        ...common,
+        categories: ['nightlife', 'counterculture', 'hangout', 'abandoned', 'mutual_aid'],
+      });
     }
   };
 
-  const isPresetActive = (preset: 'essentials' | 'after-dark' | 'connections') => {
+  const isPresetActive = (preset: 'essentials' | 'after-dark' | 'connections' | 'scenes') => {
     const selected = [...state.filters.categories].sort().join('|');
     const conditionsAreNeutral =
       !state.filters.openNow &&
@@ -195,7 +200,11 @@ export function FilterBar({ compact = false }: { compact?: boolean }) {
         && !state.filters.afterDark;
     }
     if (preset === 'after-dark') return selected === 'popos' && state.filters.afterDark;
-    return selected === ['transit', 'pedestrian_connection'].sort().join('|')
+    if (preset === 'connections') {
+      return selected === ['transit', 'pedestrian_connection'].sort().join('|')
+        && !state.filters.afterDark;
+    }
+    return selected === ['nightlife', 'counterculture', 'hangout', 'abandoned', 'mutual_aid'].sort().join('|')
       && !state.filters.afterDark;
   };
 
@@ -206,6 +215,7 @@ export function FilterBar({ compact = false }: { compact?: boolean }) {
         <button type="button" className={`button ghost tiny ${isPresetActive('essentials') ? 'is-active' : ''}`} aria-pressed={isPresetActive('essentials')} onClick={() => applyPreset('essentials')}>Essentials</button>
         <button type="button" className={`button ghost tiny ${isPresetActive('after-dark') ? 'is-active' : ''}`} aria-pressed={isPresetActive('after-dark')} onClick={() => applyPreset('after-dark')}>After-dark POPOS</button>
         <button type="button" className={`button ghost tiny ${isPresetActive('connections') ? 'is-active' : ''}`} aria-pressed={isPresetActive('connections')} onClick={() => applyPreset('connections')}>Transit & connections</button>
+        <button type="button" className={`button ghost tiny ${isPresetActive('scenes') ? 'is-active' : ''}`} aria-pressed={isPresetActive('scenes')} onClick={() => applyPreset('scenes')}>Scenes & hideaways</button>
       </div>
       <p className="filter-presets-note">Quick views change filters only; they do not confirm current hours, entry rights, or accessibility.</p>
       <div className="filter-chips">
