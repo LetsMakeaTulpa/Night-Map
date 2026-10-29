@@ -179,7 +179,7 @@ export function FilterBar({ compact = false }: { compact?: boolean }) {
     } else {
       actions.setFilter({
         ...common,
-        categories: ['nightlife', 'counterculture', 'hangout', 'abandoned', 'mutual_aid'],
+        categories: ['popos', 'food', 'nightlife', 'counterculture', 'hangout', 'abandoned', 'mutual_aid', 'history'],
       });
     }
   };
@@ -204,7 +204,7 @@ export function FilterBar({ compact = false }: { compact?: boolean }) {
       return selected === ['transit', 'pedestrian_connection'].sort().join('|')
         && !state.filters.afterDark;
     }
-    return selected === ['nightlife', 'counterculture', 'hangout', 'abandoned', 'mutual_aid'].sort().join('|')
+    return selected === ['popos', 'food', 'nightlife', 'counterculture', 'hangout', 'abandoned', 'mutual_aid', 'history'].sort().join('|')
       && !state.filters.afterDark;
   };
 
