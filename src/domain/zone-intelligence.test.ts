@@ -48,6 +48,8 @@ describe('zone intelligence', () => {
     expect(summary.hangoutComfort?.score).toBe(100);
     expect(summary.hangoutComfort?.confidence).toBe('medium');
     expect(summary.lowFriction?.score).toBe(75);
+    expect(summary.publicAccessClarity?.score).toBe(100);
+    expect(summarizeZone('z', [], ratings, now, 'day').hangoutComfort).toBeNull();
     expect(zoneRatingLabel(summary.hangoutComfort, 'comfort')).toBe('Often comfortable');
   });
 
