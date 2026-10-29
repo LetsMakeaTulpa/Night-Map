@@ -62,6 +62,8 @@ export interface ZoneIntelligenceSummary {
   hangoutComfort: ZoneRatingSummary | null;
   /** Community-reported low-friction experience, not a prediction of enforcement. */
   lowFriction: ZoneRatingSummary | null;
+  /** Whether access is clearly public/permitted, based on visitor observations. */
+  publicAccessClarity: ZoneRatingSummary | null;
   /** Transparent counts, kept separate instead of merged into a danger score. */
   feedCounts: Record<ZoneFeedKind, number>;
   complaintSignals: number;
@@ -80,7 +82,7 @@ function freshnessFor(dates: string[], now: Date): ZoneRatingSummary['freshness'
   return age <= 30 ? 'recent' : age <= 180 ? 'aging' : 'stale';
 }
 
-function ratingSummary(values: ZoneVisitRating[], field: 'hangoutComfort' | 'lowFriction', now: Date): ZoneRatingSummary | null {
+function ratingSummary(values: ZoneVisitRating[], field: 'hangoutComfort' | 'lowFriction' | 'publicAccessClarity', now: Date): ZoneRatingSummary | null {
   if (values.length === 0) return null;
   const score = Math.round(values.reduce((sum, value) => sum + (value[field] - 1) * 25, 0) / values.length);
   const freshness = freshnessFor(values.map((v) => v.observedAt), now);
@@ -102,10 +104,11 @@ export function summarizeZone(
   signals: ZoneFeedSignal[],
   ratings: ZoneVisitRating[],
   now = new Date(),
+  timeBand?: ZoneTimeBand,
 ): ZoneIntelligenceSummary {
   const cutoff = now.getTime() - 30 * DAY_MS;
   const recentSignals = signals.filter((s) => s.zoneId === zoneId && Number.isFinite(new Date(s.observedAt).getTime()) && new Date(s.observedAt).getTime() >= cutoff && new Date(s.observedAt).getTime() <= now.getTime());
-  const recentRatings = ratings.filter((r) => r.zoneId === zoneId && Number.isFinite(new Date(r.observedAt).getTime()) && new Date(r.observedAt).getTime() <= now.getTime());
+  const recentRatings = ratings.filter((r) => r.zoneId === zoneId && Number.isFinite(new Date(r.observedAt).getTime()) && new Date(r.observedAt).getTime() <= now.getTime() && (timeBand === undefined || r.timeBand === timeBand));
   const feedCounts = Object.fromEntries(FEED_KINDS.map((kind) => [kind, recentSignals.filter((s) => s.feed === kind).length])) as Record<ZoneFeedKind, number>;
   const complaintSignals = recentSignals.filter((s) => s.feed === 'service_request' && /noise|obstruction|sidewalk|parking|graffiti|litter|street cleaning|shared space/i.test(s.category)).length;
 
@@ -114,6 +117,7 @@ export function summarizeZone(
     asOf: now.toISOString(),
     hangoutComfort: ratingSummary(recentRatings, 'hangoutComfort', now),
     lowFriction: ratingSummary(recentRatings, 'lowFriction', now),
+    publicAccessClarity: ratingSummary(recentRatings, 'publicAccessClarity', now),
     feedCounts,
     complaintSignals,
     caveat: 'Community ratings describe reported experiences, not objective safety or a promise of no complaints. Official feed counts are raw 30-day counts, not population-adjusted rates; calls, crime reports and service requests are different evidence and are not merged into a danger score.',
