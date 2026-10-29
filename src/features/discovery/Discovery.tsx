@@ -179,7 +179,7 @@ export function FilterBar({ compact = false }: { compact?: boolean }) {
     } else {
       actions.setFilter({
         ...common,
-        categories: ['popos', 'food', 'nightlife', 'counterculture', 'hangout', 'abandoned', 'mutual_aid', 'history'],
+        categories: ['popos', 'food', 'nightlife', 'counterculture', 'hangout', 'abandoned', 'mutual_aid'],
       });
     }
   };
