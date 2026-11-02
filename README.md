@@ -1,8 +1,8 @@
 # Night Map
 
-A mobile-first field instrument for central San Francisco after dark. Night Map
-combines a nocturnal vector basemap, sourced public-resource records, walking
-routes, private field notes, and a small editorial atlas.
+A mobile-first urban discovery and fieldwork map for San Francisco. Night Map
+combines a detailed vector basemap, sourced public-resource records, public-space
+discovery, walking routes, private field notes, and civic context.
 
 This is a **first slice**, not a citywide directory. It covers a central footprint
 (Downtown, SoMa, Tenderloin, Civic Center, Chinatown, Financial District) and says
@@ -109,7 +109,7 @@ simplification or the height rules needs no network.
   request: notes and the review queue stay reachable from the header buttons beside search, and all
   three remain in the desktop workspace tabs.
 - Map with clustering, category/condition filters, a legend, saved views, and
-  layer presets (Essentials, Resources, Transit, My fieldnotes, History).
+  layer presets (Essentials, Resources, Transit, My fieldnotes, History, Reported activity, Scenes & hideaways).
 - Place inspector with access, hours, evidence, sources, observation history and
   explicit "Not confirmed"/"Open now not confirmed" states.
 - Nearby list with walking distance, filters, alternatives, and a source/age chip
