@@ -57,7 +57,15 @@ npm run data:sfgov     # DataSF SODA rows → scripts/.cache/*
 npm run data:sfgov -- --refresh # bypass cached API responses and fetch fresh City data
 npm run data:build     # normalise, validate and write places/resources/sources
 npm run data:access    # geocode the hand-checked access records → src/data/access.json
+npm run data:validate:incidents # validate the civic snapshot privacy/geometry boundary
 ```
+
+The published dispatched-call and 311 snapshots are refreshed by GitHub Actions
+once daily at 17:30 UTC after this workflow is merged into the default branch.
+It reruns the source query with the privacy filters, validates the output fields,
+40 m coordinate snapping and footprint, then commits only changed snapshot files.
+You can also run the workflow manually from the Actions tab. The app displays the
+snapshot generation time and newest-record age; a refresh does not make either feed live.
 
 `data:access` is separate from `data:build` on purpose. It reads
 `scripts/inputs/access-records.json` — the mail, phone, device and printing facts
