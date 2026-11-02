@@ -28,6 +28,8 @@ jobs:
           cache: npm
       - name: Install locked dependencies
         run: npm ci
+      - name: Validate civic snapshots
+        run: npm run data:validate:incidents
       - name: Typecheck
         run: npm run typecheck
       - name: Unit tests
