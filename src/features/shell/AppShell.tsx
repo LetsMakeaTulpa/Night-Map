@@ -252,7 +252,7 @@ export function AppShell() {
             </svg>
             <div>
               <span className="brand-name">Night Map</span>
-              <span className="brand-sub">San Francisco after dark</span>
+              <span className="brand-sub">San Francisco · beyond the obvious</span>
             </div>
           </div>
           {coverageChip}
