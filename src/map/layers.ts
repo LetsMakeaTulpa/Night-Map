@@ -184,6 +184,11 @@ export const LAYER_PRESETS = [
     description:
       'Recent dispatched calls and 311 requests as published snapshots, with no live feed and nothing that names a person.',
   },
+  {
+    id: 'scenes-hideaways',
+    name: 'Scenes & hideaways',
+    description: 'Public spaces, POPOS, food and mutual aid, plus curated DIY and music-scene records when verified. No history layer.',
+  },
 ] as const;
 
 export type LayerPresetId = (typeof LAYER_PRESETS)[number]['id'];
