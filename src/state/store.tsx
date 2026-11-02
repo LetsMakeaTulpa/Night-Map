@@ -380,7 +380,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
           };
           const visibleIds = presets[preset] ?? [];
           const layers = Object.fromEntries(LAYERS.map((l) => [l.id, visibleIds.includes(l.id)]));
-          const sceneCategories: CategoryId[] = ['popos', 'hangout', 'mutual_aid', 'food', 'bathroom', 'water', 'civic', 'nightlife', 'counterculture'];
+          const sceneCategories: CategoryId[] = ['popos', 'hangout', 'abandoned', 'passage', 'mutual_aid', 'food', 'bathroom', 'water', 'civic', 'nightlife', 'counterculture'];
           return {
             ...s,
             layers,
