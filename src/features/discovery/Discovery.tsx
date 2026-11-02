@@ -152,6 +152,9 @@ export function FilterBar({ compact = false }: { compact?: boolean }) {
   const { state, actions } = useStore();
   const [expanded, setExpanded] = useState(!compact);
   const active = activeFilterCount(state.filters);
+  const unpopulatedCategories = CATEGORIES.filter(
+    (category) => state.filters.categories.includes(category.id) && (dataset.categoryCounts[category.id] ?? 0) === 0,
+  );
 
   // Quick-view definitions live in one tested module so labels and active
   // states always match the filter state they apply.
@@ -189,6 +192,12 @@ export function FilterBar({ compact = false }: { compact?: boolean }) {
           );
         })}
       </div>
+      {unpopulatedCategories.length > 0 && (
+        <p className="filter-empty-note" role="note">
+          <strong>Not yet populated:</strong> {unpopulatedCategories.map((category) => category.label).join(', ')}.
+          These categories have no verified records in this central-SF release; their absence is not evidence that the places do not exist.
+        </p>
+      )}
       <button type="button" className="link-button filters-toggle" onClick={() => setExpanded((v) => !v)} aria-expanded={expanded}>
         {expanded ? 'Hide conditions' : `Conditions${active ? ` (${active})` : ''}`}
       </button>
