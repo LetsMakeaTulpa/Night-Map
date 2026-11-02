@@ -18,7 +18,8 @@
     "data:incidents": "node scripts/fetch-incidents.mjs",
     "data:sfgov": "node scripts/fetch-sfgov.mjs",
     "data:build": "node scripts/build-dataset.mjs",
-    "data:access": "node scripts/build-access-records.mjs"
+    "data:access": "node scripts/build-access-records.mjs",
+    "data:validate:incidents": "node scripts/validate-incidents.mjs"
   },
   "dependencies": {
     "@fontsource/ibm-plex-sans": "^5.1.0",
