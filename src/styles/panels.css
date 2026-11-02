@@ -201,3 +201,16 @@
     grid-template-columns: 1fr;
   }
 }
+
+.filter-empty-note {
+  margin: 0 0 10px;
+  padding: 8px 10px;
+  border-left: 2px solid var(--line);
+  color: var(--muted);
+  font-size: 11px;
+  line-height: 1.5;
+}
+
+.filter-empty-note strong {
+  color: var(--text-2);
+}
