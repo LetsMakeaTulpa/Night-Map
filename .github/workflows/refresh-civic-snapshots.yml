@@ -1,0 +1,43 @@
+name: Refresh civic snapshots
+
+on:
+  schedule:
+    - cron: '30 17 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: night-map-civic-snapshot-refresh
+  cancel-in-progress: false
+
+jobs:
+  refresh:
+    name: Fetch, filter and validate City snapshots
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Check out default branch
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: true
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - name: Fetch fresh published City data
+        run: node scripts/fetch-incidents.mjs --refresh
+      - name: Validate privacy and geometry constraints
+        run: node scripts/validate-incidents.mjs
+      - name: Commit changed snapshots
+        run: |
+          git add public/incidents/calls.json public/incidents/cases311.json src/data/incidents-meta.json
+          if git diff --cached --quiet; then
+            echo "No snapshot changes to commit."
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git commit -m "chore(data): refresh civic snapshots"
+          git push
