@@ -8,6 +8,7 @@ import { geocodePhoton, GeocodeError } from '../../services/geocoding';
 import { formatDistance } from '../../domain/geo';
 import { EmptyState, EvidencePill, PathIcon, useOnline } from '../ui';
 import { CATEGORY_BY_ID } from '../../domain/categories';
+import { isQuickViewActive, quickViewPatch, type QuickViewId } from '../../domain/discovery-presets';
 
 export function SearchBar({ autoFocus = false, onNavigate }: { autoFocus?: boolean; onNavigate?: () => void }) {
   const { state, actions } = useStore();
@@ -152,61 +153,10 @@ export function FilterBar({ compact = false }: { compact?: boolean }) {
   const [expanded, setExpanded] = useState(!compact);
   const active = activeFilterCount(state.filters);
 
-  // Presets are navigation shortcuts, not claims that a service is open,
-  // accessible, or safe to enter. They only change the existing local filters.
-  const applyPreset = (preset: 'essentials' | 'after-dark' | 'connections' | 'scenes') => {
-    const common = {
-      openNow: false,
-      freeOnly: false,
-      verifiedOnly: false,
-      maxWalkMinutes: 0,
-      nearTransit: false,
-      accessibleOnly: false,
-      afterDark: false,
-    };
-    if (preset === 'essentials') {
-      actions.setFilter({
-        ...common,
-        categories: ['food', 'water', 'bathroom', 'shelter', 'services', 'medical', 'transit', 'civic'],
-      });
-    } else if (preset === 'after-dark') {
-      actions.setFilter({ ...common, categories: ['popos'], afterDark: true });
-    } else if (preset === 'connections') {
-      actions.setFilter({
-        ...common,
-        categories: ['transit', 'pedestrian_connection'],
-      });
-    } else {
-      actions.setFilter({
-        ...common,
-        categories: ['popos', 'food', 'nightlife', 'counterculture', 'hangout', 'abandoned', 'mutual_aid'],
-      });
-    }
-  };
-
-  const isPresetActive = (preset: 'essentials' | 'after-dark' | 'connections' | 'scenes') => {
-    const selected = [...state.filters.categories].sort().join('|');
-    const conditionsAreNeutral =
-      !state.filters.openNow &&
-      !state.filters.freeOnly &&
-      !state.filters.verifiedOnly &&
-      state.filters.maxWalkMinutes === 0 &&
-      !state.filters.nearTransit &&
-      !state.filters.accessibleOnly &&
-      !state.filters.query.trim();
-    if (!conditionsAreNeutral) return false;
-    if (preset === 'essentials') {
-      return selected === ['food', 'water', 'bathroom', 'shelter', 'services', 'medical', 'transit', 'civic'].sort().join('|')
-        && !state.filters.afterDark;
-    }
-    if (preset === 'after-dark') return selected === 'popos' && state.filters.afterDark;
-    if (preset === 'connections') {
-      return selected === ['transit', 'pedestrian_connection'].sort().join('|')
-        && !state.filters.afterDark;
-    }
-    return selected === ['popos', 'food', 'nightlife', 'counterculture', 'hangout', 'abandoned', 'mutual_aid', 'history'].sort().join('|')
-      && !state.filters.afterDark;
-  };
+  // Quick-view definitions live in one tested module so labels and active
+  // states always match the filter state they apply.
+  const applyPreset = (preset: QuickViewId) => actions.setFilter(quickViewPatch(preset));
+  const isPresetActive = (preset: QuickViewId) => isQuickViewActive(state.filters, preset);
 
   return (
     <div className="filterbar">
