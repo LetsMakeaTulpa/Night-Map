@@ -1,0 +1,97 @@
+name: Night Map live preview
+
+on:
+  push:
+    branches:
+      - 'preview/full-app'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: night-map-full-app-preview
+  cancel-in-progress: true
+
+jobs:
+  preview:
+    name: Build and serve the actual Night Map app
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Check out the exact feature-branch source
+        uses: actions/checkout@v4
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - name: Install locked dependencies
+        run: npm ci
+      - name: Validate the shipped civic snapshots
+        run: npm run data:validate:incidents
+      - name: Build the production PWA
+        run: npm run build
+      - name: Confirm the production output exists
+        run: |
+          test -s dist/index.html
+          test -s dist/sw.js
+          echo "Production build contains $(find dist -type f | wc -l) files."
+      - name: Start Vite production preview
+        env:
+          __VITE_ADDITIONAL_SERVER_ALLOWED_HOSTS: .trycloudflare.com
+        run: |
+          nohup npm run preview -- --host 0.0.0.0 --port 3000 >/tmp/night-map-vite.log 2>&1 </dev/null &
+          for i in $(seq 1 60); do
+            if curl --fail --silent http://127.0.0.1:3000/ >/dev/null; then
+              echo "Vite production preview is responding."
+              exit 0
+            fi
+            sleep 2
+          done
+          cat /tmp/night-map-vite.log
+          exit 1
+      - name: Install Cloudflare quick-tunnel client
+        run: |
+          curl --fail --location --retry 3 \
+            https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-amd64 \
+            --output /tmp/cloudflared
+          chmod +x /tmp/cloudflared
+          /tmp/cloudflared --version
+      - name: Publish temporary preview URL
+        run: |
+          nohup /tmp/cloudflared tunnel --url http://127.0.0.1:3000 --no-autoupdate --protocol http2 >/tmp/night-map-tunnel.log 2>&1 </dev/null &
+          PREVIEW_URL=""
+          for i in $(seq 1 90); do
+            PREVIEW_URL="$(grep -oE 'https://[a-z0-9-]+\.trycloudflare\.com' /tmp/night-map-tunnel.log | head -n 1 || true)"
+            if [ -n "$PREVIEW_URL" ]; then break; fi
+            sleep 2
+          done
+          if [ -z "$PREVIEW_URL" ]; then
+            cat /tmp/night-map-tunnel.log
+            exit 1
+          fi
+          echo "PREVIEW_URL=$PREVIEW_URL" >> "$GITHUB_ENV"
+          echo "## Night Map — full application preview" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo "**$PREVIEW_URL**" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo "Built from feature/scenes-hideaways-chillness at commit d26fda7. This temporary URL is served from the production build and remains available while this workflow job is running." >> "$GITHUB_STEP_SUMMARY"
+          echo "LIVE_PREVIEW_URL=$PREVIEW_URL"
+          for i in $(seq 1 45); do
+            if curl --fail --silent --show-error --max-time 12 "$PREVIEW_URL/" >/dev/null 2>&1; then
+              echo "Public preview endpoint returned HTTP successfully."
+              break
+            fi
+            sleep 2
+          done
+      - name: Keep preview online for 20 minutes
+        run: |
+          for i in $(seq 1 20); do
+            if ! kill -0 "$(pgrep -f 'cloudflared tunnel --url' | head -n 1)" 2>/dev/null; then
+              echo "Cloudflare tunnel process exited."
+              cat /tmp/night-map-tunnel.log
+              exit 1
+            fi
+            sleep 60
+          done
+          echo "Preview window complete; the temporary tunnel will now close."
