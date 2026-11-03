@@ -7,6 +7,7 @@ on:
 
 permissions:
   contents: read
+  statuses: write
 
 concurrency:
   group: night-map-full-app-preview
@@ -77,6 +78,11 @@ jobs:
           echo "" >> "$GITHUB_STEP_SUMMARY"
           echo "Built from feature/scenes-hideaways-chillness at commit d26fda7. This temporary URL is served from the production build and remains available while this workflow job is running." >> "$GITHUB_STEP_SUMMARY"
           echo "LIVE_PREVIEW_URL=$PREVIEW_URL"
+          gh api --method POST "/repos/${GITHUB_REPOSITORY}/statuses/${GITHUB_SHA}" \\
+            -f state="success" \\
+            -f context="Night Map preview" \\
+            -f description="Temporary production preview is live" \\
+            -f target_url="$PREVIEW_URL"
           for i in $(seq 1 45); do
             if curl --fail --silent --show-error --max-time 12 "$PREVIEW_URL/" >/dev/null 2>&1; then
               echo "Public preview endpoint returned HTTP successfully."
