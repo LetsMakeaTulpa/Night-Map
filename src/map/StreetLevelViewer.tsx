@@ -25,7 +25,7 @@ function loadMapillarySdk(): Promise<MapillarySdk> {
   if (window.mapillary) return Promise.resolve(window.mapillary);
   if (sdkPromise) return sdkPromise;
 
-  sdkPromise = new Promise((resolve, reject) => {
+  const pending = new Promise<MapillarySdk>((resolve, reject) => {
     if (!document.querySelector('link[data-night-mapillary]')) {
       const link = document.createElement('link');
       link.rel = 'stylesheet';
@@ -51,7 +51,8 @@ function loadMapillarySdk(): Promise<MapillarySdk> {
     sdkPromise = null;
     throw error;
   });
-  return sdkPromise;
+  sdkPromise = pending;
+  return pending;
 }
 
 export function StreetLevelViewer({
