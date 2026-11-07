@@ -115,7 +115,7 @@ test.describe('Scenario J — see the city in three dimensions', () => {
     await page.getByRole('button', { name: 'Map legend' }).click();
     const legend = page.getByRole('dialog', { name: 'Map legend' });
     await expect(legend.getByText(/About the 3D view/)).toBeVisible();
-    await expect(legend.getByText(/vertical exaggeration/)).toBeVisible();
+    await expect(legend.getByText(/vertical scale with no exaggeration/)).toBeVisible();
     await expect(legend.getByText(/carry a height tag/)).toBeVisible();
     await expect(legend.getByText(/estimated from footprint type/)).toBeVisible();
   });
@@ -139,4 +139,32 @@ test.describe('Scenario J — see the city in three dimensions', () => {
     await expect(buildingRow.locator('input[type=checkbox]')).toBeChecked();
     await expect(terrainRow.locator('input[type=checkbox]')).toBeChecked();
   });
+  test('satellite imagery is a separate base-map toggle', async ({ page }) => {
+    const imagery: string[] = [];
+    page.on('response', (response) => {
+      if (response.url().includes('/World_Imagery/MapServer/tile/')) imagery.push(response.url());
+    });
+    await openMap(page);
+    await page.getByRole('button', { name: 'Toggle satellite imagery' }).click();
+    await expect.poll(async () => page.evaluate(() => {
+      const map = (window as unknown as { __nightmap?: { getLayer(id: string): { visibility?: string } | undefined } }).__nightmap;
+      return map?.getLayer('satellite-raster')?.visibility;
+    })).toBe('visible');
+    await expect.poll(() => imagery.length, { timeout: 30000 }).toBeGreaterThan(0);
+    await page.getByRole('button', { name: 'Toggle satellite imagery' }).click();
+    await expect.poll(async () => page.evaluate(() => {
+      const map = (window as unknown as { __nightmap?: { getLayer(id: string): { visibility?: string } | undefined } }).__nightmap;
+      return map?.getLayer('satellite-raster')?.visibility;
+    })).toBe('none');
+  });
+
+  test('street-level imagery asks for a user token and keeps it session-only', async ({ page }) => {
+    await openMap(page);
+    await page.getByRole('button', { name: 'Street-level imagery' }).click();
+    await expect(page.getByRole('dialog', { name: 'Mapillary street-level imagery' })).toBeVisible();
+    await expect(page.getByLabel('Your Mapillary access token')).toBeVisible();
+    await expect(page.getByText(/token stays in this panel's memory only/)).toBeVisible();
+    await expect(page.locator('.street-viewer-canvas')).toBeVisible();
+  });
+
 });

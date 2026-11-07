@@ -132,15 +132,21 @@ simplification or the height rules needs no network.
   overwrite a source value.
 - Atlas workspace with three source-backed neighbourhood guides and a history
   layer that stays visually subordinate to navigation.
-- **Terrain and a 3D view.** Relief shading from a public-domain elevation model
-  (35 tiles at about 7 m per pixel) and **13,975 extruded OpenStreetMap building
-  footprints**. 9,996 carry a height tag, 812 give storey counts, and 3,167 are
-  estimated from footprint type — the legend states that split rather than
-displaying guesses as measurements.
-- **A camera that is not stuck overhead.** Two-finger drag or control-drag tilts and
-  turns the map (up to 78°), the 3D control tilts and switches on the layers that
-  carry height, and a compass returns to north. Extrusion collapses to a flat
-  footprint fill in a plan view.
+- **Terrain and a 3D view.** Relief shading and terrain displacement from a public-domain
+  elevation model (35 tiles at about 7 m per pixel), rendered at true vertical scale (×1),
+  and **13,975 extruded OpenStreetMap building footprints**. 9,996 carry a height tag,
+  812 give storey counts, and 3,167 are estimates from footprint type; estimates are stated
+  explicitly rather than presented as measured heights.
+- **A camera that is not stuck overhead.** Two-finger drag or control-drag tilts and turns
+  the map (up to 78°); the 3D control enables terrain and buildings, and the compass returns
+  to north. Building extrusion collapses to a flat footprint in plan view.
+- **Satellite imagery, independently switchable.** Esri World Imagery sits beneath Night
+  Map's road labels, markers and routes. Aerial capture dates and resolution vary by
+  location; the imagery layer requires a network connection.
+- **Street-level imagery.** A Mapillary viewer searches for a nearby public image around the
+  map centre. The user supplies their own access token at runtime; it remains in component
+  memory only and is never committed or saved by Night Map. Coverage is community-contributed,
+  incomplete and variable by capture date.
 - **Reported activity, as snapshots and never as a live feed.** Two real City datasets are
   plotted on demand: 525 dispatched calls that had closed within 48 hours, and 2,358 recent
   311 requests. Both are opt-in layers, both are cached on first use rather than installed,

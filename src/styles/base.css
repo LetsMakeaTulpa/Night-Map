@@ -1157,3 +1157,20 @@ body.is-resizing {
   border-radius: 4px;
   font-size: 12px;
 }
+
+
+.street-viewer-backdrop{position:absolute;inset:0;z-index:12;display:grid;place-items:center;padding:18px;background:rgba(4,8,14,.72);backdrop-filter:blur(7px)}
+.street-viewer{width:min(760px,calc(100% - 12px));max-height:calc(100% - 24px);display:flex;flex-direction:column;overflow:hidden;border:1px solid var(--line);border-radius:14px;background:var(--panel);box-shadow:0 24px 80px rgba(0,0,0,.55)}
+.street-viewer-head{display:flex;justify-content:space-between;align-items:center;gap:12px;padding:14px 16px;border-bottom:1px solid var(--line)}
+.street-viewer-head h2{font-family:var(--font-display);font-size:21px;font-weight:500;margin:0}
+.street-viewer-form{display:grid;gap:7px;padding:12px 16px;border-bottom:1px solid var(--line)}
+.street-viewer-form>label{font-size:11px;color:var(--text-2)}
+.street-viewer-token-row{display:flex;gap:8px}
+.street-viewer-token-row input{min-width:0;flex:1;border:1px solid var(--line);border-radius:8px;padding:9px 10px;background:var(--ink-2);color:var(--text);font:inherit}
+.street-viewer-form p{margin:0;line-height:1.45}
+.street-viewer-status{padding:9px 16px;color:var(--muted);font-size:11px;line-height:1.4}
+.street-viewer-canvas{height:min(52vh,440px);min-height:220px;background:#090e14}
+.street-viewer-credit{padding:8px 16px;margin:0;color:var(--faint);font-size:10px}
+.map-control.is-active{border-color:var(--accent);color:var(--accent);background:var(--accent-soft)}
+@media(max-width:700px){.street-viewer-backdrop{padding:8px}.street-viewer{width:100%;max-height:calc(100% - 8px)}.street-viewer-canvas{height:42vh;min-height:190px}.street-viewer-token-row{flex-direction:column}.street-viewer-token-row .button{width:100%}}
+

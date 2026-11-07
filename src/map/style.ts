@@ -53,6 +53,14 @@ export function buildStyle(): StyleSpecification {
       rail: { type: 'geojson', data: rail as GeoJSON.FeatureCollection },
       labels: { type: 'geojson', data: basePoints as GeoJSON.FeatureCollection },
       landmarks: { type: 'geojson', data: landmarks as GeoJSON.FeatureCollection },
+      satellite: {
+        type: 'raster',
+        tiles: ['https://services.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}'],
+        tileSize: 256,
+        minzoom: 0,
+        maxzoom: 19,
+        attribution: 'Sources: Esri, Maxar, Earthstar Geographics, and the GIS User Community',
+      },
       places: {
         type: 'geojson',
         data: empty,
@@ -97,6 +105,13 @@ export function buildStyle(): StyleSpecification {
     },
     layers: [
       { id: 'bg', type: 'background', paint: { 'background-color': THEME.land } },
+      {
+        id: 'satellite-raster',
+        type: 'raster',
+        source: 'satellite',
+        layout: { visibility: 'none' },
+        paint: { 'raster-opacity': 1, 'raster-fade-duration': 0 },
+      },
       {
         id: 'hillshade',
         type: 'hillshade',

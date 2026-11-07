@@ -43,10 +43,20 @@ export const LAYERS: (LayerDefinition & { defaultOpacity?: number })[] = [
     offline: 'bundled',
   },
   {
+    id: 'satellite',
+    name: 'Satellite / aerial imagery',
+    description:
+      'Esri World Imagery raster basemap. Capture dates and resolution vary by location; network connection required.',
+    group: 'base',
+    sourceIds: [],
+    defaultVisible: false,
+    offline: 'requires_network',
+  },
+  {
     id: 'terrain',
     name: 'Terrain shading',
     description:
-      'Relief shading from a public-domain elevation model, about 7 m per pixel. It shows hills and slopes. It cannot show kerbs, stairs, retaining walls or whether a slope is walkable.',
+      'Public-domain elevation model at about 7 m per pixel, rendered at true vertical scale (×1, no exaggeration). It shows broad hills and slopes, not kerbs, stairs or walkable grades.',
     group: 'base',
     sourceIds: ['src:aws-terrain-tiles'],
     defaultVisible: false,

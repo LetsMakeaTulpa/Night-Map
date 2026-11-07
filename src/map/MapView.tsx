@@ -31,6 +31,7 @@ import {
   type IncidentFeature,
 } from './incidents';
 import { IncidentCard } from '../features/incidents/IncidentCard';
+import { StreetLevelViewer } from './StreetLevelViewer';
 
 interface MapViewProps {
   views: PlaceView[];
@@ -43,12 +44,8 @@ const MAP_PADDING = () => {
 };
 
 const TERRAIN_SOURCE_ID = 'terrain';
-/**
- * Deliberate vertical exaggeration. San Francisco's hills are real but gentle at
- * city scale, so terrain is drawn taller than it is — and the UI says so, because
- * an exaggerated relief must never be read as a slope measurement.
- */
-const TERRAIN_EXAGGERATION = 1.4;
+/** Terrain displacement uses the elevation model at its actual vertical scale. */
+const TERRAIN_EXAGGERATION = 1.0;
 const PITCH_3D = 55;
 
 /**
@@ -81,6 +78,8 @@ export function MapView({ views, onOpenLayers }: MapViewProps) {
     cases311: 0,
   });
   const [incidentIssue, setIncidentIssue] = useState<string | null>(null);
+  const [streetLevelOpen, setStreetLevelOpen] = useState(false);
+  const [streetLevelCoordinates, setStreetLevelCoordinates] = useState<[number, number]>([-122.4085, 37.7835]);
   const locationMarker = useRef<maplibregl.Marker | null>(null);
   const selectedPlace = state.selectedPlaceId
     ? dataset.placeById.get(state.selectedPlaceId) ?? (state.selectedPlaceId.startsWith('private:')
@@ -316,9 +315,12 @@ export function MapView({ views, onOpenLayers }: MapViewProps) {
         if (map.getLayer(id)) map.setLayoutProperty(id, 'visibility', visible ? 'visible' : 'none');
       }
     };
+    const satelliteOn = Boolean(state.layers.satellite);
+    set(['satellite-raster'], satelliteOn);
     set(['road-casing', 'roads', 'paths'], state.layers.streets);
     set(['street-labels'], state.layers['street-labels']);
-    set(['green-fill', 'green-edge'], state.layers.parks);
+    set(['green-fill', 'green-edge'], state.layers.parks && !satelliteOn);
+    set(['water-fill', 'coastline'], !satelliteOn);
     set(['hood-labels'], state.layers.neighbourhoods);
     set(['rail-line'], state.layers['transit-lines']);
     set(['stops-dots', 'stops-labels'], state.layers['transit-stops']);
@@ -715,15 +717,28 @@ export function MapView({ views, onOpenLayers }: MapViewProps) {
     if (!state.layers['buildings-3d']) actions.setLayer('buildings-3d', true);
     moveCamera({ pitch: PITCH_3D, bearing: map.getBearing() });
     actions.notify(
-      '3D view on. Terrain relief is exaggerated ×1.4; building heights come from OpenStreetMap tags where present and are estimated elsewhere.',
+      '3D view on. Terrain relief is rendered at true vertical scale (×1); building heights come from OpenStreetMap tags where available and are estimated elsewhere.',
     );
   };
 
   const resetNorth = () => moveCamera({ pitch: 0, bearing: 0 });
 
+  const openStreetLevel = () => {
+    const centre = mapRef.current?.getCenter();
+    if (centre) setStreetLevelCoordinates([centre.lng, centre.lat]);
+    setStreetLevelOpen(true);
+  };
+
   return (
     <div className="map-stage">
       <div ref={containerRef} className="map-canvas" role="application" aria-label="Night Map of central San Francisco" />
+
+      {streetLevelOpen && (
+        <StreetLevelViewer
+          coordinates={streetLevelCoordinates}
+          onClose={() => setStreetLevelOpen(false)}
+        />
+      )}
 
       {mapError && (
         <div className="map-failed" role="alert">
@@ -788,6 +803,25 @@ export function MapView({ views, onOpenLayers }: MapViewProps) {
           title={`Tilt the map and show terrain and buildings. Two-finger drag or control-drag tilts by hand (max ${78}°).`}
         >
           <CubeIcon />
+        </button>
+        <button
+          type="button"
+          className={`map-control ${state.layers.satellite ? 'is-active' : ''}`}
+          onClick={() => actions.setLayer('satellite', !state.layers.satellite)}
+          aria-pressed={Boolean(state.layers.satellite)}
+          aria-label="Toggle satellite imagery"
+          title="Toggle satellite / aerial imagery"
+        >
+          <SatelliteIcon />
+        </button>
+        <button
+          type="button"
+          className="map-control"
+          onClick={openStreetLevel}
+          aria-label="Street-level imagery"
+          title="Find Mapillary street-level imagery near map centre"
+        >
+          <StreetViewIcon />
         </button>
         <button
           type="button"
@@ -918,8 +952,8 @@ export function MapView({ views, onOpenLayers }: MapViewProps) {
               <ul>
                 {terrainOn && (
                   <li>
-                    Relief comes from a public-domain elevation model at about 7 m per pixel, drawn with ×
-                    {TERRAIN_EXAGGERATION} vertical exaggeration. It shows hills and slopes; it cannot show kerbs,
+                    Relief comes from a public-domain elevation model at about 7 m per pixel, rendered at ×
+                    {TERRAIN_EXAGGERATION} vertical scale with no exaggeration. It shows broad hills and slopes; it cannot show kerbs,
                     stairs, retaining walls or whether a slope is walkable.
                   </li>
                 )}
@@ -978,6 +1012,25 @@ function LayersIcon() {
     <svg viewBox="0 0 24 24" aria-hidden="true">
       <path d="m12 3 8.5 4.8L12 12.6 3.5 7.8 12 3Z" />
       <path d="m4 11.6 8 4.6 8-4.6M4 15.4l8 4.6 8-4.6" />
+    </svg>
+  );
+}
+
+function SatelliteIcon() {
+  return (
+    <svg viewBox="0 0 24 24" aria-hidden="true">
+      <path d="M4 4h6v6H4zM14 14h6v6h-6zM10 7h4M17 10v4M7 10v4h7M10 17h4" />
+      <path d="m3 15 4-4M17 7l4-4" />
+    </svg>
+  );
+}
+
+function StreetViewIcon() {
+  return (
+    <svg viewBox="0 0 24 24" aria-hidden="true">
+      <path d="M12 3.5a4 4 0 1 0 0 8 4 4 0 0 0 0-8Z" />
+      <path d="M5.5 20a6.5 6.5 0 0 1 13 0M12 11.5v4M9.5 15.5h5" />
+      <path d="M3 8.5h2M19 8.5h2" />
     </svg>
   );
 }
