@@ -62,6 +62,8 @@ export function MapView({ views, onOpenLayers }: MapViewProps) {
   const { state, actions } = useStore();
   const containerRef = useRef<HTMLDivElement | null>(null);
   const mapRef = useRef<MapLibreMap | null>(null);
+  const overviewContainerRef = useRef<HTMLDivElement | null>(null);
+  const overviewMapRef = useRef<MapLibreMap | null>(null);
   const [ready, setReady] = useState(false);
   const [mapError, setMapError] = useState<string | null>(null);
   const [legendOpen, setLegendOpen] = useState(false);
@@ -182,6 +184,108 @@ export function MapView({ views, onOpenLayers }: MapViewProps) {
       mapRef.current = null;
     };
   }, []);
+
+
+  // Small orientation map: a separate, lightweight basemap with the current
+  // main-map extent outlined. Clicking it recentres the primary map.
+  useEffect(() => {
+    const main = mapRef.current;
+    const container = overviewContainerRef.current;
+    if (!ready || !main || !container || overviewMapRef.current) return;
+
+    let active = true;
+    const overview = new maplibregl.Map({
+      container,
+      style: 'https://basemaps.cartocdn.com/gl/dark-matter-gl-style/style.json',
+      center: main.getCenter(),
+      zoom: 10.7,
+      minZoom: 9,
+      maxZoom: 12.5,
+      attributionControl: false,
+      interactive: true,
+      scrollZoom: false,
+      boxZoom: false,
+      dragRotate: false,
+      pitchWithRotate: false,
+      touchPitch: false,
+      keyboard: false,
+      doubleClickZoom: false,
+    });
+    overviewMapRef.current = overview;
+
+    const syncExtent = () => {
+      if (!active || !overview.isStyleLoaded()) return;
+      const source = overview.getSource('main-map-extent') as maplibregl.GeoJSONSource | undefined;
+      if (!source) return;
+      const bounds = main.getBounds();
+      const west = bounds.getWest();
+      const east = bounds.getEast();
+      const south = bounds.getSouth();
+      const north = bounds.getNorth();
+      source.setData({
+        type: 'FeatureCollection',
+        features: [{
+          type: 'Feature',
+          properties: {},
+          geometry: {
+            type: 'Polygon',
+            coordinates: [[
+              [west, south], [east, south], [east, north], [west, north], [west, south],
+            ]],
+          },
+        }],
+      });
+      overview.setCenter(main.getCenter());
+    };
+
+    overview.once('load', () => {
+      if (!active) return;
+      overview.addSource('main-map-extent', {
+        type: 'geojson',
+        data: { type: 'FeatureCollection', features: [] },
+      });
+      overview.addLayer({
+        id: 'main-map-extent-fill',
+        type: 'fill',
+        source: 'main-map-extent',
+        paint: { 'fill-color': '#B6A0E8', 'fill-opacity': 0.16 },
+      });
+      overview.addLayer({
+        id: 'main-map-extent-line',
+        type: 'line',
+        source: 'main-map-extent',
+        paint: { 'line-color': '#D0BFFF', 'line-width': 2 },
+      });
+      syncExtent();
+    });
+
+    const onMiniMapClick = (event: maplibregl.MapMouseEvent) => {
+      main.easeTo({
+        center: [event.lngLat.lng, event.lngLat.lat],
+        zoom: Math.max(14, main.getZoom()),
+        duration: 450,
+      });
+    };
+    const onEnter = () => { overview.getCanvas().style.cursor = 'crosshair'; };
+    const onLeave = () => { overview.getCanvas().style.cursor = ''; };
+
+    main.on('move', syncExtent);
+    main.on('moveend', syncExtent);
+    overview.on('click', onMiniMapClick);
+    overview.on('mouseenter', onEnter);
+    overview.on('mouseleave', onLeave);
+
+    return () => {
+      active = false;
+      main.off('move', syncExtent);
+      main.off('moveend', syncExtent);
+      overview.off('click', onMiniMapClick);
+      overview.off('mouseenter', onEnter);
+      overview.off('mouseleave', onLeave);
+      overview.remove();
+      overviewMapRef.current = null;
+    };
+  }, [ready]);
 
   // Keep the canvas in sync with filtered data.
   useEffect(() => {
@@ -735,6 +839,11 @@ export function MapView({ views, onOpenLayers }: MapViewProps) {
   return (
     <div className="map-stage">
       <div ref={containerRef} className="map-canvas" role="application" aria-label="Night Map of central San Francisco" />
+
+      <section className="mini-map-widget" aria-label="Map overview">
+        <div className="mini-map-heading"><span>Overview</span><span>Current extent</span></div>
+        <div ref={overviewContainerRef} className="mini-map-canvas" aria-label="Clickable overview map" />
+      </section>
 
       {streetLevelOpen && (
         <StreetLevelViewer

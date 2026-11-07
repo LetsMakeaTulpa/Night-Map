@@ -167,4 +167,16 @@ test.describe('Scenario J — see the city in three dimensions', () => {
     await expect(page.locator('.street-viewer-canvas')).toBeVisible();
   });
 
+  test('map controls are grouped into a floating tools menu and the overview map renders', async ({ page }) => {
+    await openMap(page);
+    await expect(page.getByRole('button', { name: 'Map tools' })).toBeVisible();
+    await page.getByRole('button', { name: 'Map tools' }).click();
+    await expect(page.getByRole('dialog', { name: 'Map tools menu' })).toBeVisible();
+    await expect(page.getByRole('button', { name: /3D terrain/ })).toBeVisible();
+    await expect(page.getByRole('button', { name: /Satellite/ })).toBeVisible();
+    await expect(page.getByRole('button', { name: /Street view/ })).toBeVisible();
+    await expect(page.locator('.mini-map-widget')).toBeVisible();
+    await expect(page.locator('.mini-map-canvas canvas')).toBeVisible();
+  });
+
 });
