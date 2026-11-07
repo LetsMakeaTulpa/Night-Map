@@ -8,6 +8,7 @@ import {
 } from '../../map/incidents';
 import { signalsFromPublishedRecords } from '../../domain/zone-context';
 import { summarizeZone, zoneIdForPoint } from '../../domain/zone-intelligence';
+import { summarizePublicRealmMaintenanceForZone } from '../../domain/public-realm-maintenance';
 
 interface Props {
   coordinates: [number, number];
@@ -69,6 +70,19 @@ export function ZoneContextPanel({ coordinates }: Props) {
     return summarizeZone(zone.id, signals, []);
   }, [loaded, zone.id]);
 
+  const maintenanceSummary = useMemo(
+    () => loaded.status === 'ready'
+      ? summarizePublicRealmMaintenanceForZone(
+          loaded.cases311.features.map((feature) => ({
+            coordinates: feature.geometry.coordinates,
+            kind: feature.properties.kind,
+          })),
+          zone.id,
+        )
+      : { total: 0, categories: [] },
+    [loaded, zone.id],
+  );
+
   const callsMeta = feedSummary('calls');
   const casesMeta = feedSummary('cases311');
 
@@ -110,6 +124,22 @@ export function ZoneContextPanel({ coordinates }: Props) {
               <small>matching records in snapshot</small>
             </article>
           </div>
+          <section className="zone-source" data-testid="maintenance-summary">
+            <div className="zone-source-head">
+              <strong>Public-realm maintenance requests</strong>
+              <span>{maintenanceSummary.total} in this cell</span>
+            </div>
+            {maintenanceSummary.categories.length > 0 ? (
+              <ul className="plain-list">
+                {maintenanceSummary.categories.map((entry) => (
+                  <li key={entry.kind}>{entry.label}: {entry.count}</li>
+                ))}
+              </ul>
+            ) : (
+              <p>No matching public-realm maintenance request appears in this cell in the installed snapshot.</p>
+            )}
+            <p>Filtered from the same 7-day City 311 snapshot. A service request is not confirmation that the condition exists now or remains unresolved.</p>
+          </section>
 
           <section className="zone-source">
             <div className="zone-source-head">
@@ -144,8 +174,9 @@ export function ZoneContextPanel({ coordinates }: Props) {
         <strong>What these numbers do not mean</strong>
         <p>
           A dispatched call is not proof of a crime. A 311 case is not proof of wrongdoing and may be closed.
-          Counts do not measure danger, predict enforcement, or tell you what is happening now. Zero records
-          means only that this snapshot contains no matching entry.
+          Maintenance requests indicate where someone submitted a service request, not a verified outage, ongoing defect,
+          neglect finding, danger level or current condition. Counts do not measure danger, predict enforcement, or tell
+          you what is happening now. Zero records means only that this snapshot contains no matching entry.
         </p>
       </div>
 

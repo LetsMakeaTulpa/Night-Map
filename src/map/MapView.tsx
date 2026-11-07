@@ -332,6 +332,7 @@ export function MapView({ views, onOpenLayers }: MapViewProps) {
     set(['obs-symbol'], state.layers.observations);
     set([INCIDENT_PULSE_LAYER, INCIDENT_LAYER.calls], Boolean(state.layers['calls-recent']));
     set([INCIDENT_LAYER.cases311], Boolean(state.layers['cases-311']));
+    set(['maintenance-requests'], Boolean(state.layers.maintenance || state.layers['cases-311']));
 
     if (map.getLayer('landmark-dots')) {
       map.setPaintProperty('landmark-dots', 'circle-opacity', state.layerOpacity.landmarks ?? 0.75);
@@ -445,12 +446,13 @@ export function MapView({ views, onOpenLayers }: MapViewProps) {
   // layer is switched on. Nothing is requested behind the user's back.
   const callsOn = Boolean(state.layers['calls-recent']);
   const cases311On = Boolean(state.layers['cases-311']);
+  const maintenanceOn = Boolean(state.layers.maintenance);
   useEffect(() => {
     const map = mapRef.current;
     if (!map || !ready) return;
     const wanted: IncidentFeed[] = [];
     if (callsOn) wanted.push('calls');
-    if (cases311On) wanted.push('cases311');
+    if (cases311On || maintenanceOn) wanted.push('cases311');
     if (wanted.length === 0) {
       setIncidentIssue(null);
       setIncidentCard(null);
@@ -490,7 +492,7 @@ export function MapView({ views, onOpenLayers }: MapViewProps) {
     return () => {
       cancelled = true;
     };
-  }, [callsOn, cases311On, ready]);
+  }, [callsOn, cases311On, maintenanceOn, ready]);
 
   // The alert blink. A steady ring is drawn instead when the reader prefers
   // reduced motion, and the animation pauses while the tab is hidden, so a phone
@@ -523,7 +525,7 @@ export function MapView({ views, onOpenLayers }: MapViewProps) {
 
     const handleClick = (event: maplibregl.MapMouseEvent) => {
       if (state.route.picking) return; // handled by a dedicated listener below
-      const incidentLayers = [INCIDENT_LAYER.calls, INCIDENT_LAYER.cases311].filter((id) => map.getLayer(id));
+      const incidentLayers = [INCIDENT_LAYER.calls, INCIDENT_LAYER.cases311, 'maintenance-requests'].filter((id) => map.getLayer(id));
       const hits = map.queryRenderedFeatures(event.point, {
         layers: ['places-symbol', 'stops-dots', 'landmark-dots', ...incidentLayers].filter((id) =>
           map.getLayer(id),
@@ -602,6 +604,7 @@ export function MapView({ views, onOpenLayers }: MapViewProps) {
           'cluster-halo',
           INCIDENT_LAYER.calls,
           INCIDENT_LAYER.cases311,
+          'maintenance-requests',
         ].filter((id) => map.getLayer(id)),
       });
       map.getCanvas().style.cursor = hits.length > 0 ? 'pointer' : '';
@@ -917,14 +920,20 @@ export function MapView({ views, onOpenLayers }: MapViewProps) {
                 <span>Reported dispatched call</span>
               </li>
             )}
-            {cases311On && (
+            {(cases311On || maintenanceOn) && (
               <li>
                 <span className="legend-shape legend-311" />
                 <span>Recent 311 request</span>
               </li>
             )}
+            {maintenanceOn && (
+              <li>
+                <span className="legend-shape" style={{ background: '#A99AE8', borderRadius: '50%' }} />
+                <span>Public-realm maintenance request</span>
+              </li>
+            )}
           </ul>
-          {(callsOn || cases311On) && (
+          {(callsOn || cases311On || maintenanceOn) && (
             <div className="legend-3d" data-testid="legend-incidents">
               <h4>About reported activity</h4>
               <ul>
@@ -936,7 +945,8 @@ export function MapView({ views, onOpenLayers }: MapViewProps) {
                 </li>
                 <li>
                   311 cases come from the nightly service-request dataset and are often already resolved by the
-                  time they are read here.
+                  time they are read here. The public-realm maintenance view filters exact service categories; a request
+                  does not prove a defect, outage, ongoing condition or personal danger.
                 </li>
                 <li>
                   Categories that describe a person — encampments, welfare checks, medical and crisis calls, and

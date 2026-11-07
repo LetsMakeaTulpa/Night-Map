@@ -15,7 +15,7 @@ export function LayerDrawer({ onClose }: { onClose: () => void }) {
     {
       id: 'context',
       title: 'Context',
-      note: 'Historic features, and published City incident snapshots that are never live.',
+      note: 'Historic features, published City snapshots, and public-realm maintenance reports. Never live.',
     },
   ];
 

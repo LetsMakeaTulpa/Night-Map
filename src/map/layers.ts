@@ -133,10 +133,21 @@ export const LAYERS: (LayerDefinition & { defaultOpacity?: number })[] = [
     minZoom: 12,
   },
   {
+    id: 'maintenance',
+    name: 'Public-realm maintenance reports',
+    description:
+      'A filtered view of public 311 requests for streetlights, street/sidewalk cleaning, public graffiti, litter receptacles, street defects and blocked public ways. These are requests, not verified defects or a danger score; the nightly snapshot is capped by service type.',
+    group: 'context',
+    sourceIds: ['src:sfgov-cases311'],
+    defaultVisible: false,
+    offline: 'cached_on_demand',
+    minZoom: 13.4,
+  },
+  {
     id: 'cases-311',
     name: '311 service requests (7 days)',
     description:
-      'Recent 311 cases: street cleaning, graffiti, parking, noise, street defects and similar. Nightly dataset, so a request may already be done. Categories that describe a person rather than a place are excluded before publication.',
+      'Recent 311 service requests from the City nightly snapshot. Requests may already be resolved or scheduled, the snapshot is capped by service type, and categories describing a person rather than a place are excluded before publication.',
     group: 'context',
     sourceIds: ['src:sfgov-cases311'],
     defaultVisible: false,

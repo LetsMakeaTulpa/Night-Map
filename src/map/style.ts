@@ -7,6 +7,7 @@ import rail from '../data/basemap/rail.json';
 import basePoints from '../data/basemap/base-points.json';
 import landmarks from '../data/basemap/landmarks.json';
 import terrainMeta from '../data/terrain-meta.json';
+import { PUBLIC_REALM_MAINTENANCE_KINDS } from '../domain/public-realm-maintenance';
 
 /** The elevation extract's own bounds, so a request is never made for a tile we do not ship. */
 const TERRAIN_BBOX = terrainMeta.bbox as [number, number, number, number];
@@ -404,12 +405,38 @@ export function buildStyle(): StyleSpecification {
         type: 'circle',
         source: 'cases311',
         minzoom: 13.4,
+        filter: ['!', ['in', ['get', 'kind'], ['literal', PUBLIC_REALM_MAINTENANCE_KINDS]]],
         paint: {
           'circle-radius': ['interpolate', ['linear'], ['zoom'], 13.4, 3, 18, 6],
           'circle-color': '#D8A657',
           'circle-stroke-color': '#1A1206',
           'circle-stroke-width': 1,
           'circle-opacity': 0.45,
+        },
+      },
+      {
+        id: 'maintenance-requests',
+        type: 'circle',
+        source: 'cases311',
+        minzoom: 13.4,
+        filter: ['in', ['get', 'kind'], ['literal', PUBLIC_REALM_MAINTENANCE_KINDS]],
+        paint: {
+          'circle-radius': ['interpolate', ['linear'], ['zoom'], 13.4, 4, 18, 7],
+          'circle-color': [
+            'match',
+            ['get', 'kind'],
+            'Streetlights', '#B8A5F2',
+            'Street and Sidewalk Cleaning', '#8DB9D8',
+            'Graffiti Public', '#A99AE8',
+            'Blocked Street and Sidewalk', '#7EA8C7',
+            'Litter Receptacle Maintenance', '#91BCD0',
+            'Street Defect', '#84A9CE',
+            'Sidewalk and Curb', '#759DBF',
+            '#A9B7C8',
+          ],
+          'circle-stroke-color': '#101827',
+          'circle-stroke-width': 1.6,
+          'circle-opacity': 0.96,
         },
       },
       {

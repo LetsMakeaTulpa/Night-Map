@@ -147,6 +147,7 @@ simplification or the height rules needs no network.
   map centre. The user supplies their own access token at runtime; it remains in component
   memory only and is never committed or saved by Night Map. Coverage is community-contributed,
   incomplete and variable by capture date.
+- **Public-realm maintenance context, not a risk score.** A separate map layer and coarse-area count filter the sanitized 311 snapshot for exact City service categories covering streetlights, street/sidewalk cleaning, public graffiti, litter receptacles, street defects and blocked public ways. A request is not proof of an outage, ongoing defect, danger or neglect; counts never become a safe/unsafe rating.
 - **Reported activity, as snapshots and never as a live feed.** Two real City datasets are
   plotted on demand: 525 dispatched calls that had closed within 48 hours, and 2,358 recent
   311 requests. Both are opt-in layers, both are cached on first use rather than installed,
