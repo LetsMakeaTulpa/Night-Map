@@ -88,3 +88,129 @@
     grid-template-columns: minmax(0, 1.3fr) minmax(180px, 0.7fr);
   }
 }
+
+
+/* ---------------------------------------------------------- area context */
+
+.zone-context {
+  display: grid;
+  gap: 12px;
+}
+
+.zone-context-head,
+.zone-source-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.zone-context-head h3 {
+  margin-top: 3px;
+  font-size: 16px;
+}
+
+.zone-scope {
+  flex: none;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  padding: 3px 8px;
+  color: var(--muted);
+  font-size: 10px;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.zone-metrics {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.zone-metric {
+  min-width: 0;
+  display: grid;
+  gap: 3px;
+  padding: 12px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--ink-2);
+}
+
+.zone-metric span {
+  color: var(--muted);
+  font-size: 11px;
+}
+
+.zone-metric strong {
+  font-size: 28px;
+  line-height: 1.1;
+  font-variant-numeric: tabular-nums;
+}
+
+.zone-metric small {
+  color: var(--faint);
+  font-size: 10px;
+}
+
+.zone-source {
+  display: grid;
+  gap: 5px;
+  padding: 10px 0;
+  border-top: 1px solid var(--line-soft);
+}
+
+.zone-source-head strong {
+  font-size: 12px;
+}
+
+.zone-source-head span {
+  color: var(--muted);
+  font-size: 10px;
+  white-space: nowrap;
+}
+
+.zone-source p,
+.zone-snapshot,
+.zone-caveat p {
+  color: var(--muted);
+  font-size: 11px;
+  line-height: 1.5;
+}
+
+.zone-source a {
+  width: fit-content;
+  font-size: 11px;
+}
+
+.zone-snapshot {
+  padding-top: 2px;
+}
+
+.zone-caveat {
+  display: grid;
+  gap: 5px;
+}
+
+.zone-caveat strong {
+  font-size: 11px;
+}
+
+@media (max-width: 390px) {
+  .zone-metrics {
+    grid-template-columns: 1fr;
+  }
+}
+
+.filter-empty-note {
+  margin: 0 0 10px;
+  padding: 8px 10px;
+  border-left: 2px solid var(--line);
+  color: var(--muted);
+  font-size: 11px;
+  line-height: 1.5;
+}
+
+.filter-empty-note strong {
+  color: var(--text-2);
+}

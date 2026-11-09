@@ -3,7 +3,7 @@
   "private": true,
   "version": "0.1.0",
   "type": "module",
-  "description": "Night Map — a field instrument for San Francisco after dark",
+  "description": "Night Map — an urban discovery, public-space and civic information map",
   "scripts": {
     "dev": "vite --host 0.0.0.0",
     "build": "tsc --noEmit && vite build && node scripts/build-sw.mjs",
@@ -18,7 +18,8 @@
     "data:incidents": "node scripts/fetch-incidents.mjs",
     "data:sfgov": "node scripts/fetch-sfgov.mjs",
     "data:build": "node scripts/build-dataset.mjs",
-    "data:access": "node scripts/build-access-records.mjs"
+    "data:access": "node scripts/build-access-records.mjs",
+    "data:validate:incidents": "node scripts/validate-incidents.mjs"
   },
   "dependencies": {
     "@fontsource/ibm-plex-sans": "^5.1.0",

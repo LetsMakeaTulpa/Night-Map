@@ -31,6 +31,7 @@ import {
   type IncidentFeature,
 } from './incidents';
 import { IncidentCard } from '../features/incidents/IncidentCard';
+import { StreetLevelViewer } from './StreetLevelViewer';
 
 interface MapViewProps {
   views: PlaceView[];
@@ -43,12 +44,8 @@ const MAP_PADDING = () => {
 };
 
 const TERRAIN_SOURCE_ID = 'terrain';
-/**
- * Deliberate vertical exaggeration. San Francisco's hills are real but gentle at
- * city scale, so terrain is drawn taller than it is — and the UI says so, because
- * an exaggerated relief must never be read as a slope measurement.
- */
-const TERRAIN_EXAGGERATION = 1.4;
+/** Terrain displacement uses the elevation model at its actual vertical scale. */
+const TERRAIN_EXAGGERATION = 1.0;
 const PITCH_3D = 55;
 
 /**
@@ -65,6 +62,8 @@ export function MapView({ views, onOpenLayers }: MapViewProps) {
   const { state, actions } = useStore();
   const containerRef = useRef<HTMLDivElement | null>(null);
   const mapRef = useRef<MapLibreMap | null>(null);
+  const overviewContainerRef = useRef<HTMLDivElement | null>(null);
+  const overviewMapRef = useRef<MapLibreMap | null>(null);
   const [ready, setReady] = useState(false);
   const [mapError, setMapError] = useState<string | null>(null);
   const [legendOpen, setLegendOpen] = useState(false);
@@ -81,6 +80,8 @@ export function MapView({ views, onOpenLayers }: MapViewProps) {
     cases311: 0,
   });
   const [incidentIssue, setIncidentIssue] = useState<string | null>(null);
+  const [streetLevelOpen, setStreetLevelOpen] = useState(false);
+  const [streetLevelCoordinates, setStreetLevelCoordinates] = useState<[number, number]>([-122.4085, 37.7835]);
   const locationMarker = useRef<maplibregl.Marker | null>(null);
   const selectedPlace = state.selectedPlaceId
     ? dataset.placeById.get(state.selectedPlaceId) ?? (state.selectedPlaceId.startsWith('private:')
@@ -183,6 +184,108 @@ export function MapView({ views, onOpenLayers }: MapViewProps) {
       mapRef.current = null;
     };
   }, []);
+
+
+  // Small orientation map: a separate, lightweight basemap with the current
+  // main-map extent outlined. Clicking it recentres the primary map.
+  useEffect(() => {
+    const main = mapRef.current;
+    const container = overviewContainerRef.current;
+    if (!ready || !main || !container || overviewMapRef.current) return;
+
+    let active = true;
+    const overview = new maplibregl.Map({
+      container,
+      style: 'https://basemaps.cartocdn.com/gl/dark-matter-gl-style/style.json',
+      center: main.getCenter(),
+      zoom: 10.7,
+      minZoom: 9,
+      maxZoom: 12.5,
+      attributionControl: false,
+      interactive: true,
+      scrollZoom: false,
+      boxZoom: false,
+      dragRotate: false,
+      pitchWithRotate: false,
+      touchPitch: false,
+      keyboard: false,
+      doubleClickZoom: false,
+    });
+    overviewMapRef.current = overview;
+
+    const syncExtent = () => {
+      if (!active || !overview.isStyleLoaded()) return;
+      const source = overview.getSource('main-map-extent') as maplibregl.GeoJSONSource | undefined;
+      if (!source) return;
+      const bounds = main.getBounds();
+      const west = bounds.getWest();
+      const east = bounds.getEast();
+      const south = bounds.getSouth();
+      const north = bounds.getNorth();
+      source.setData({
+        type: 'FeatureCollection',
+        features: [{
+          type: 'Feature',
+          properties: {},
+          geometry: {
+            type: 'Polygon',
+            coordinates: [[
+              [west, south], [east, south], [east, north], [west, north], [west, south],
+            ]],
+          },
+        }],
+      });
+      overview.setCenter(main.getCenter());
+    };
+
+    overview.once('load', () => {
+      if (!active) return;
+      overview.addSource('main-map-extent', {
+        type: 'geojson',
+        data: { type: 'FeatureCollection', features: [] },
+      });
+      overview.addLayer({
+        id: 'main-map-extent-fill',
+        type: 'fill',
+        source: 'main-map-extent',
+        paint: { 'fill-color': '#B6A0E8', 'fill-opacity': 0.16 },
+      });
+      overview.addLayer({
+        id: 'main-map-extent-line',
+        type: 'line',
+        source: 'main-map-extent',
+        paint: { 'line-color': '#D0BFFF', 'line-width': 2 },
+      });
+      syncExtent();
+    });
+
+    const onMiniMapClick = (event: maplibregl.MapMouseEvent) => {
+      main.easeTo({
+        center: [event.lngLat.lng, event.lngLat.lat],
+        zoom: Math.max(14, main.getZoom()),
+        duration: 450,
+      });
+    };
+    const onEnter = () => { overview.getCanvas().style.cursor = 'crosshair'; };
+    const onLeave = () => { overview.getCanvas().style.cursor = ''; };
+
+    main.on('move', syncExtent);
+    main.on('moveend', syncExtent);
+    overview.on('click', onMiniMapClick);
+    overview.on('mouseenter', onEnter);
+    overview.on('mouseleave', onLeave);
+
+    return () => {
+      active = false;
+      main.off('move', syncExtent);
+      main.off('moveend', syncExtent);
+      overview.off('click', onMiniMapClick);
+      overview.off('mouseenter', onEnter);
+      overview.off('mouseleave', onLeave);
+      overview.remove();
+      overviewMapRef.current = null;
+    };
+  }, [ready]);
 
   // Keep the canvas in sync with filtered data.
   useEffect(() => {
@@ -316,9 +419,12 @@ export function MapView({ views, onOpenLayers }: MapViewProps) {
         if (map.getLayer(id)) map.setLayoutProperty(id, 'visibility', visible ? 'visible' : 'none');
       }
     };
+    const satelliteOn = Boolean(state.layers.satellite);
+    set(['satellite-raster'], satelliteOn);
     set(['road-casing', 'roads', 'paths'], state.layers.streets);
     set(['street-labels'], state.layers['street-labels']);
-    set(['green-fill', 'green-edge'], state.layers.parks);
+    set(['green-fill', 'green-edge'], state.layers.parks && !satelliteOn);
+    set(['water-fill', 'coastline'], !satelliteOn);
     set(['hood-labels'], state.layers.neighbourhoods);
     set(['rail-line'], state.layers['transit-lines']);
     set(['stops-dots', 'stops-labels'], state.layers['transit-stops']);
@@ -330,6 +436,7 @@ export function MapView({ views, onOpenLayers }: MapViewProps) {
     set(['obs-symbol'], state.layers.observations);
     set([INCIDENT_PULSE_LAYER, INCIDENT_LAYER.calls], Boolean(state.layers['calls-recent']));
     set([INCIDENT_LAYER.cases311], Boolean(state.layers['cases-311']));
+    set(['maintenance-requests'], Boolean(state.layers.maintenance || state.layers['cases-311']));
 
     if (map.getLayer('landmark-dots')) {
       map.setPaintProperty('landmark-dots', 'circle-opacity', state.layerOpacity.landmarks ?? 0.75);
@@ -443,12 +550,13 @@ export function MapView({ views, onOpenLayers }: MapViewProps) {
   // layer is switched on. Nothing is requested behind the user's back.
   const callsOn = Boolean(state.layers['calls-recent']);
   const cases311On = Boolean(state.layers['cases-311']);
+  const maintenanceOn = Boolean(state.layers.maintenance);
   useEffect(() => {
     const map = mapRef.current;
     if (!map || !ready) return;
     const wanted: IncidentFeed[] = [];
     if (callsOn) wanted.push('calls');
-    if (cases311On) wanted.push('cases311');
+    if (cases311On || maintenanceOn) wanted.push('cases311');
     if (wanted.length === 0) {
       setIncidentIssue(null);
       setIncidentCard(null);
@@ -488,7 +596,7 @@ export function MapView({ views, onOpenLayers }: MapViewProps) {
     return () => {
       cancelled = true;
     };
-  }, [callsOn, cases311On, ready]);
+  }, [callsOn, cases311On, maintenanceOn, ready]);
 
   // The alert blink. A steady ring is drawn instead when the reader prefers
   // reduced motion, and the animation pauses while the tab is hidden, so a phone
@@ -521,7 +629,7 @@ export function MapView({ views, onOpenLayers }: MapViewProps) {
 
     const handleClick = (event: maplibregl.MapMouseEvent) => {
       if (state.route.picking) return; // handled by a dedicated listener below
-      const incidentLayers = [INCIDENT_LAYER.calls, INCIDENT_LAYER.cases311].filter((id) => map.getLayer(id));
+      const incidentLayers = [INCIDENT_LAYER.calls, INCIDENT_LAYER.cases311, 'maintenance-requests'].filter((id) => map.getLayer(id));
       const hits = map.queryRenderedFeatures(event.point, {
         layers: ['places-symbol', 'stops-dots', 'landmark-dots', ...incidentLayers].filter((id) =>
           map.getLayer(id),
@@ -600,6 +708,7 @@ export function MapView({ views, onOpenLayers }: MapViewProps) {
           'cluster-halo',
           INCIDENT_LAYER.calls,
           INCIDENT_LAYER.cases311,
+          'maintenance-requests',
         ].filter((id) => map.getLayer(id)),
       });
       map.getCanvas().style.cursor = hits.length > 0 ? 'pointer' : '';
@@ -715,15 +824,33 @@ export function MapView({ views, onOpenLayers }: MapViewProps) {
     if (!state.layers['buildings-3d']) actions.setLayer('buildings-3d', true);
     moveCamera({ pitch: PITCH_3D, bearing: map.getBearing() });
     actions.notify(
-      '3D view on. Terrain relief is exaggerated ×1.4; building heights come from OpenStreetMap tags where present and are estimated elsewhere.',
+      '3D view on. Terrain relief is rendered at true vertical scale (×1); building heights come from OpenStreetMap tags where available and are estimated elsewhere.',
     );
   };
 
   const resetNorth = () => moveCamera({ pitch: 0, bearing: 0 });
 
+  const openStreetLevel = () => {
+    const centre = mapRef.current?.getCenter();
+    if (centre) setStreetLevelCoordinates([centre.lng, centre.lat]);
+    setStreetLevelOpen(true);
+  };
+
   return (
     <div className="map-stage">
       <div ref={containerRef} className="map-canvas" role="application" aria-label="Night Map of central San Francisco" />
+
+      <section className="mini-map-widget" aria-label="Map overview">
+        <div className="mini-map-heading"><span>Overview</span><span>Current extent</span></div>
+        <div ref={overviewContainerRef} className="mini-map-canvas" aria-label="Clickable overview map" />
+      </section>
+
+      {streetLevelOpen && (
+        <StreetLevelViewer
+          coordinates={streetLevelCoordinates}
+          onClose={() => setStreetLevelOpen(false)}
+        />
+      )}
 
       {mapError && (
         <div className="map-failed" role="alert">
@@ -788,6 +915,25 @@ export function MapView({ views, onOpenLayers }: MapViewProps) {
           title={`Tilt the map and show terrain and buildings. Two-finger drag or control-drag tilts by hand (max ${78}°).`}
         >
           <CubeIcon />
+        </button>
+        <button
+          type="button"
+          className={`map-control ${state.layers.satellite ? 'is-active' : ''}`}
+          onClick={() => actions.setLayer('satellite', !state.layers.satellite)}
+          aria-pressed={Boolean(state.layers.satellite)}
+          aria-label="Toggle satellite imagery"
+          title="Toggle satellite / aerial imagery"
+        >
+          <SatelliteIcon />
+        </button>
+        <button
+          type="button"
+          className="map-control"
+          onClick={openStreetLevel}
+          aria-label="Street-level imagery"
+          title="Find Mapillary street-level imagery near map centre"
+        >
+          <StreetViewIcon />
         </button>
         <button
           type="button"
@@ -883,14 +1029,20 @@ export function MapView({ views, onOpenLayers }: MapViewProps) {
                 <span>Reported dispatched call</span>
               </li>
             )}
-            {cases311On && (
+            {(cases311On || maintenanceOn) && (
               <li>
                 <span className="legend-shape legend-311" />
                 <span>Recent 311 request</span>
               </li>
             )}
+            {maintenanceOn && (
+              <li>
+                <span className="legend-shape" style={{ background: '#A99AE8', borderRadius: '50%' }} />
+                <span>Public-realm maintenance request</span>
+              </li>
+            )}
           </ul>
-          {(callsOn || cases311On) && (
+          {(callsOn || cases311On || maintenanceOn) && (
             <div className="legend-3d" data-testid="legend-incidents">
               <h4>About reported activity</h4>
               <ul>
@@ -902,7 +1054,8 @@ export function MapView({ views, onOpenLayers }: MapViewProps) {
                 </li>
                 <li>
                   311 cases come from the nightly service-request dataset and are often already resolved by the
-                  time they are read here.
+                  time they are read here. The public-realm maintenance view filters exact service categories; a request
+                  does not prove a defect, outage, ongoing condition or personal danger.
                 </li>
                 <li>
                   Categories that describe a person — encampments, welfare checks, medical and crisis calls, and
@@ -918,8 +1071,8 @@ export function MapView({ views, onOpenLayers }: MapViewProps) {
               <ul>
                 {terrainOn && (
                   <li>
-                    Relief comes from a public-domain elevation model at about 7 m per pixel, drawn with ×
-                    {TERRAIN_EXAGGERATION} vertical exaggeration. It shows hills and slopes; it cannot show kerbs,
+                    Relief comes from a public-domain elevation model at about 7 m per pixel, rendered at ×
+                    {TERRAIN_EXAGGERATION} vertical scale with no exaggeration. It shows broad hills and slopes; it cannot show kerbs,
                     stairs, retaining walls or whether a slope is walkable.
                   </li>
                 )}
@@ -978,6 +1131,25 @@ function LayersIcon() {
     <svg viewBox="0 0 24 24" aria-hidden="true">
       <path d="m12 3 8.5 4.8L12 12.6 3.5 7.8 12 3Z" />
       <path d="m4 11.6 8 4.6 8-4.6M4 15.4l8 4.6 8-4.6" />
+    </svg>
+  );
+}
+
+function SatelliteIcon() {
+  return (
+    <svg viewBox="0 0 24 24" aria-hidden="true">
+      <path d="M4 4h6v6H4zM14 14h6v6h-6zM10 7h4M17 10v4M7 10v4h7M10 17h4" />
+      <path d="m3 15 4-4M17 7l4-4" />
+    </svg>
+  );
+}
+
+function StreetViewIcon() {
+  return (
+    <svg viewBox="0 0 24 24" aria-hidden="true">
+      <path d="M12 3.5a4 4 0 1 0 0 8 4 4 0 0 0 0-8Z" />
+      <path d="M5.5 20a6.5 6.5 0 0 1 13 0M12 11.5v4M9.5 15.5h5" />
+      <path d="M3 8.5h2M19 8.5h2" />
     </svg>
   );
 }

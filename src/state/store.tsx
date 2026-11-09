@@ -376,10 +376,18 @@ export function AppProvider({ children }: { children: ReactNode }) {
               'cases-311',
             ],
             history: ['streets', 'street-labels', 'parks', 'landmarks', 'neighbourhoods'],
+            'scenes-hideaways': ['streets', 'street-labels', 'parks', 'resources', 'neighbourhoods', 'transit-stops'],
           };
           const visibleIds = presets[preset] ?? [];
           const layers = Object.fromEntries(LAYERS.map((l) => [l.id, visibleIds.includes(l.id)]));
-          return { ...s, layers };
+          const sceneCategories: CategoryId[] = ['popos', 'hangout', 'abandoned', 'passage', 'mutual_aid', 'food', 'bathroom', 'water', 'civic', 'nightlife', 'counterculture'];
+          return {
+            ...s,
+            layers,
+            filters: preset === 'scenes-hideaways'
+              ? { ...s.filters, categories: sceneCategories, openNow: false, freeOnly: false, verifiedOnly: false }
+              : s.filters,
+          };
         }),
       saveLayerView: async (name) => {
         const view: LayerView = {

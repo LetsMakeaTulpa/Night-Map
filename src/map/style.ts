@@ -7,34 +7,35 @@ import rail from '../data/basemap/rail.json';
 import basePoints from '../data/basemap/base-points.json';
 import landmarks from '../data/basemap/landmarks.json';
 import terrainMeta from '../data/terrain-meta.json';
+import { PUBLIC_REALM_MAINTENANCE_KINDS } from '../domain/public-realm-maintenance';
 
 /** The elevation extract's own bounds, so a request is never made for a tile we do not ship. */
 const TERRAIN_BBOX = terrainMeta.bbox as [number, number, number, number];
 
 export const THEME = {
-  land: '#0D1317',
-  water: '#080E12',
-  green: '#153A22',
-  greenEdge: '#2A6240',
-  coast: '#22333D',
-  casing: '#070D10',
-  arterial: '#35444D',
-  major: '#2C3A42',
-  secondary: '#26343B',
-  local: '#202D34',
-  path: '#2A3941',
-  rail: '#334650',
-  label: '#94A3AA',
-  labelFaint: '#71828A',
-  halo: '#080D10',
-  ink: '#E9E5DC',
-  accent: '#E0A458',
-  route: '#7FD1C1',
-  routeAlt: '#556B72',
-  observation: '#E4C36A',
-  saved: '#EAE6DC',
-  selection: '#F4EFE4',
-};
+  land: '#111C2D',
+  water: '#0A1423',
+  green: '#26364E',
+  greenEdge: '#526989',
+  coast: '#2D405A',
+  casing: '#080E17',
+  arterial: '#455978',
+  major: '#384B69',
+  secondary: '#31435D',
+  local: '#273950',
+  path: '#324761',
+  rail: '#5A7190',
+  label: '#AAB8CC',
+  labelFaint: '#8293B0',
+  halo: '#0A1220',
+  ink: '#EDF0F7',
+  accent: '#B6A0E8',
+  route: '#8BC9DC',
+  routeAlt: '#607A9C',
+  observation: '#C8B1F0',
+  saved: '#D9D3F5',
+  selection: '#F0EAFF',
+}
 
 const empty = { type: 'FeatureCollection' as const, features: [] };
 
@@ -53,6 +54,14 @@ export function buildStyle(): StyleSpecification {
       rail: { type: 'geojson', data: rail as GeoJSON.FeatureCollection },
       labels: { type: 'geojson', data: basePoints as GeoJSON.FeatureCollection },
       landmarks: { type: 'geojson', data: landmarks as GeoJSON.FeatureCollection },
+      satellite: {
+        type: 'raster',
+        tiles: ['https://services.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}'],
+        tileSize: 256,
+        minzoom: 0,
+        maxzoom: 19,
+        attribution: 'Sources: Esri, Maxar, Earthstar Geographics, and the GIS User Community',
+      },
       places: {
         type: 'geojson',
         data: empty,
@@ -97,6 +106,13 @@ export function buildStyle(): StyleSpecification {
     },
     layers: [
       { id: 'bg', type: 'background', paint: { 'background-color': THEME.land } },
+      {
+        id: 'satellite-raster',
+        type: 'raster',
+        source: 'satellite',
+        layout: { visibility: 'none' },
+        paint: { 'raster-opacity': 1, 'raster-fade-duration': 0 },
+      },
       {
         id: 'hillshade',
         type: 'hillshade',
@@ -389,12 +405,38 @@ export function buildStyle(): StyleSpecification {
         type: 'circle',
         source: 'cases311',
         minzoom: 13.4,
+        filter: ['!', ['in', ['get', 'kind'], ['literal', PUBLIC_REALM_MAINTENANCE_KINDS]]],
         paint: {
           'circle-radius': ['interpolate', ['linear'], ['zoom'], 13.4, 3, 18, 6],
           'circle-color': '#D8A657',
           'circle-stroke-color': '#1A1206',
           'circle-stroke-width': 1,
           'circle-opacity': 0.45,
+        },
+      },
+      {
+        id: 'maintenance-requests',
+        type: 'circle',
+        source: 'cases311',
+        minzoom: 13.4,
+        filter: ['in', ['get', 'kind'], ['literal', PUBLIC_REALM_MAINTENANCE_KINDS]],
+        paint: {
+          'circle-radius': ['interpolate', ['linear'], ['zoom'], 13.4, 4, 18, 7],
+          'circle-color': [
+            'match',
+            ['get', 'kind'],
+            'Streetlights', '#B8A5F2',
+            'Street and Sidewalk Cleaning', '#8DB9D8',
+            'Graffiti Public', '#A99AE8',
+            'Blocked Street and Sidewalk', '#7EA8C7',
+            'Litter Receptacle Maintenance', '#91BCD0',
+            'Street Defect', '#84A9CE',
+            'Sidewalk and Curb', '#759DBF',
+            '#A9B7C8',
+          ],
+          'circle-stroke-color': '#101827',
+          'circle-stroke-width': 1.6,
+          'circle-opacity': 0.96,
         },
       },
       {

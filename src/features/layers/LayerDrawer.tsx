@@ -15,7 +15,7 @@ export function LayerDrawer({ onClose }: { onClose: () => void }) {
     {
       id: 'context',
       title: 'Context',
-      note: 'Historic features, and published City incident snapshots that are never live.',
+      note: 'Historic features, published City snapshots, and public-realm maintenance reports. Never live.',
     },
   ];
 
@@ -71,7 +71,11 @@ export function LayerDrawer({ onClose }: { onClose: () => void }) {
                         <strong>{layer.name}</strong>
                         <span>{layer.description}</span>
                         <span className="layer-meta">
-                          {sources.length > 0 ? (
+                          {layer.id === 'satellite' ? (
+                            <a href="https://services.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer" target="_blank" rel="noreferrer noopener">
+                              Esri World Imagery service
+                            </a>
+                          ) : sources.length > 0 ? (
                             <a href={sources[0].url} target="_blank" rel="noreferrer noopener">
                               {sources[0].provider}
                             </a>
@@ -164,9 +168,9 @@ export function LayerDrawer({ onClose }: { onClose: () => void }) {
 
       <p className="coverage-foot">
         Street, park, rail and historic geometry © OpenStreetMap contributors (ODbL), as are the building footprints and
-        the tagged heights on them. Terrain relief uses public-domain elevation tiles. Facility and stop inventories are
-        City and County of San Francisco open data (PDDL). Full source registry is in Atlas → Sources.
-      </p>
-    </aside>
+        the tagged heights on them. Terrain relief uses public-domain elevation tiles. Satellite imagery is credited to
+        Esri, Maxar, Earthstar Geographics and the GIS User Community. Facility and stop inventories are City and County of
+        San Francisco open data (PDDL). Full source registry is in Atlas → Sources.
+      </p>  </aside>
   );
 }
