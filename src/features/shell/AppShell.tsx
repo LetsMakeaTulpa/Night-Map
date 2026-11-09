@@ -56,8 +56,6 @@ export function AppShell() {
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [searchOpen, setSearchOpen] = useState(false);
   const [composeTarget, setComposeTarget] = useState<ComposeTarget | null>(null);
-  const [leftWidth, setLeftWidth] = useState(372);
-  const [rightWidth, setRightWidth] = useState(408);
   const [paletteOpen, setPaletteOpen] = useState(false);
   const [desktopPanelOpen, setDesktopPanelOpen] = useState(false);
   const [inspectorOpen, setInspectorOpen] = useState(false);
