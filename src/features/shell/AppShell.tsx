@@ -126,26 +126,6 @@ export function AppShell() {
     });
   };
 
-  // Desktop resizing
-  const startResize = (side: 'left' | 'right', event: React.PointerEvent) => {
-    event.preventDefault();
-    const startX = event.clientX;
-    const start = side === 'left' ? leftWidth : rightWidth;
-    const onMove = (e: PointerEvent) => {
-      const delta = side === 'left' ? e.clientX - startX : startX - e.clientX;
-      if (side === 'left') setLeftWidth(Math.min(560, Math.max(300, start + delta)));
-      else setRightWidth(Math.min(620, Math.max(320, start + delta)));
-    };
-    const onUp = () => {
-      window.removeEventListener('pointermove', onMove);
-      window.removeEventListener('pointerup', onUp);
-      document.body.classList.remove('is-resizing');
-    };
-    document.body.classList.add('is-resizing');
-    window.addEventListener('pointermove', onMove);
-    window.addEventListener('pointerup', onUp);
-  };
-
   // Command palette
   useEffect(() => {
     if (!desktop) return;
