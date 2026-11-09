@@ -59,6 +59,8 @@ export function AppShell() {
   const [leftWidth, setLeftWidth] = useState(372);
   const [rightWidth, setRightWidth] = useState(408);
   const [paletteOpen, setPaletteOpen] = useState(false);
+  const [desktopPanelOpen, setDesktopPanelOpen] = useState(false);
+  const [inspectorOpen, setInspectorOpen] = useState(false);
   const [paletteQuery, setPaletteQuery] = useState('');
   const [sheetDrag, setSheetDrag] = useState<{ startY: number; startHeight: number } | null>(null);
   const [dragHeight, setDragHeight] = useState<number | null>(null);
@@ -243,8 +245,8 @@ export function AppShell() {
 
   if (desktop) {
     return (
-      <div className="app app-desktop">
-        <header className="topbar">
+      <div className="app app-desktop app-map-first">
+        <header className="topbar map-first-topbar">
           <div className="brand">
             <svg viewBox="0 0 32 32" aria-hidden="true" className="brand-mark">
               <path d="M16 3.5 27 16 16 28.5 5 16Z" />
@@ -258,152 +260,79 @@ export function AppShell() {
           {coverageChip}
           <span className="topbar-note">Field release · central SF · no account</span>
           <div className="topbar-actions">
-            <button type="button" className="button ghost small" onClick={() => setPaletteOpen(true)}>
-              Command <kbd>⌘K</kbd>
-            </button>
-            <button type="button" className="button ghost small" onClick={() => setLayersOpen(true)}>
-              Layers
-            </button>
-            <button type="button" className="button ghost small" onClick={() => setSettingsOpen(true)}>
-              Settings
-            </button>
-            <span className={`connection ${online ? 'is-online' : 'is-offline'}`}>
-              {online ? 'Online' : 'Offline'}
-            </span>
+            <button type="button" className="button ghost small" onClick={() => setPaletteOpen(true)}>Command <kbd>⌘K</kbd></button>
+            <span className={`connection ${online ? 'is-online' : 'is-offline'}`}>{online ? 'Online' : 'Offline'}</span>
           </div>
         </header>
         {offlineBar}
-        <div className="desk" style={{ gridTemplateColumns: `${leftWidth}px 6px 1fr 6px ${rightWidth}px` }}>
-          <aside className="pane pane-left" aria-label="Discovery workspace">
-            <div className="pane-search">
-              <SearchBar />
+        <main className="pane-map map-first-stage">
+          <MapView views={views} onOpenLayers={() => setLayersOpen(true)} />
+        </main>
+
+        <nav className="desktop-edge-rail desktop-edge-rail-left" aria-label="Night Map workspaces">
+          <button type="button" className="edge-rail-brand" aria-label="Night Map home" onClick={() => { actions.setWorkspace('nearby'); setDesktopPanelOpen(false); }}>
+            <PathIcon path="M16 3.5 27 16 16 28.5 5 16Z M16 12.8a3.2 3.2 0 1 0 0 6.4a3.2 3.2 0 0 0 0-6.4Z" size={22} />
+          </button>
+          <button type="button" className="edge-rail-button" onClick={() => setSearchOpen(true)} aria-label="Search"><PathIcon path="M10.5 4.3a6.2 6.2 0 1 0 0 12.4a6.2 6.2 0 0 0 0-12.4ZM15 15l5 5" /></button>
+          {WORKSPACES.map((workspace) => (
+            <button key={workspace.id} type="button" className={`edge-rail-button ${state.workspace === workspace.id && desktopPanelOpen ? 'is-active' : ''}`}
+              aria-label={workspace.label} title={workspace.label}
+              onClick={() => { actions.setWorkspace(workspace.id); setDesktopPanelOpen(true); }}>
+              <PathIcon path={workspace.icon} />
+              <span className="edge-rail-tooltip">{workspace.label}</span>
+              {workspace.id === 'review' && openReportCount > 0 && <span className="nav-badge">{openReportCount}</span>}
+            </button>
+          ))}
+          <button type="button" className="edge-rail-button" onClick={quickNote} aria-label="New field note" title="New field note"><PathIcon path="M5 3.5h11l3 3v14H5zM8.5 11h7M8.5 15h5" /></button>
+        </nav>
+
+        <nav className="desktop-edge-rail desktop-edge-rail-right" aria-label="Map tools">
+          <button type="button" className="edge-rail-button" onClick={() => setLayersOpen(true)} aria-label="Layers" title="Layers"><PathIcon path="m12 3 9 5-9 5-9-5 9-5Zm-9 9 9 5 9-5M3 16l9 5 9-5" /></button>
+          <button type="button" className="edge-rail-button" onClick={() => setSettingsOpen(true)} aria-label="Settings and privacy" title="Settings"><PathIcon path="M12 8.8a3.2 3.2 0 1 0 0 6.4a3.2 3.2 0 0 0 0-6.4ZM12 2.8v3M12 18.2v3M2.8 12h3M18.2 12h3M5.5 5.5l2.1 2.1M16.4 16.4l2.1 2.1M18.5 5.5l-2.1 2.1M7.6 16.4l-2.1 2.1" /></button>
+          {selectedPlace && <button type="button" className="edge-rail-button" onClick={() => setInspectorOpen((v) => !v)} aria-label="Selected place details" title="Selected place"><PathIcon path="M4 4h16v16H4zM8 8h8M8 12h8M8 16h5" /></button>}
+        </nav>
+
+        {desktopPanelOpen && (
+          <section className="desktop-edge-panel desktop-edge-panel-left" aria-label={state.workspace + ' workspace'}>
+            <header><div><span className="eyebrow">Workspace</span><h2>{WORKSPACES.find((item) => item.id === state.workspace)?.label ?? state.workspace}</h2></div>
+              <button type="button" className="icon-button" onClick={() => setDesktopPanelOpen(false)} aria-label="Close workspace">×</button></header>
+            {state.workspace === 'nearby' && <div className="desktop-panel-search"><SearchBar /></div>}
+            <div className="desktop-edge-panel-scroll">{workspaceContent()}</div>
+          </section>
+        )}
+
+        {inspectorOpen && selectedPlace && (
+          <section className="desktop-edge-panel desktop-edge-panel-right" aria-label="Selected place details">
+            <header><div><span className="eyebrow">Selected record</span><h2>{selectedPlace.name}</h2></div>
+              <button type="button" className="icon-button" onClick={() => setInspectorOpen(false)} aria-label="Close details">×</button></header>
+            <div className="desktop-edge-panel-scroll">
+              <PlaceInspector placeId={selectedPlace.id} onClose={() => { actions.selectPlace(null); setInspectorOpen(false); }} onComposeNote={setComposeTarget} />
+              <CompareTray />
             </div>
-            <nav className="workspace-tabs" aria-label="Workspaces">
-              {WORKSPACES.map((workspace) => (
-                <button
-                  key={workspace.id}
-                  type="button"
-                  className={state.workspace === workspace.id ? 'is-active' : ''}
-                  aria-current={state.workspace === workspace.id ? 'page' : undefined}
-                  onClick={() => actions.setWorkspace(workspace.id)}
-                >
-                  {workspace.label}
-                  {workspace.id === 'review' && openReportCount > 0 && (
-                    <span className="nav-badge" aria-hidden="true" title={`${openReportCount} open`}>
-                      {openReportCount}
-                    </span>
-                  )}
-                </button>
-              ))}
-            </nav>
-            <div className="pane-scroll">{workspaceContent()}</div>
-            <footer className="pane-foot">
-              <span>{dataset.data.meta.counts.resources} resource records</span>
-              <button type="button" className="link-button" onClick={() => actions.setWorkspace('atlas')}>
-                Sources
-              </button>
-            </footer>
-          </aside>
+          </section>
+        )}
 
-          <div
-            className="splitter"
-            role="separator"
-            aria-orientation="vertical"
-            aria-label="Resize discovery pane"
-            onPointerDown={(e) => startResize('left', e)}
-            onDoubleClick={() => setLeftWidth(372)}
-          />
-
-          <main className="pane-map">
-            <MapView views={views} onOpenLayers={() => setLayersOpen(true)} />
-          </main>
-
-          <div
-            className="splitter"
-            role="separator"
-            aria-orientation="vertical"
-            aria-label="Resize details pane"
-            onPointerDown={(e) => startResize('right', e)}
-            onDoubleClick={() => setRightWidth(408)}
-          />
-
-          <aside className="pane pane-right" aria-label="Record inspector">
-            <div className="pane-scroll">
-              {selectedPlace ? (
-                <>
-                  <PlaceInspector
-                    placeId={selectedPlace.id}
-                    onClose={() => actions.selectPlace(null)}
-                    onComposeNote={(target) => setComposeTarget(target)}
-                  />
-                  <CompareTray />
-                </>
-              ) : (
-                <div className="inspector-empty">
-                  <p className="eyebrow">Inspector</p>
-                  <h2>Select a record</h2>
-                  <p>
-                    Choose a marker, a Nearby row, or a search result. The inspector keeps the map position and shows
-                    evidence, access and sources without losing your place.
-                  </p>
-                  <dl className="meta-table">
-                    <div className="meta-row">
-                      <dt>Records</dt>
-                      <dd>{dataset.data.meta.counts.places} places</dd>
-                    </div>
-                    <div className="meta-row">
-                      <dt>Sources</dt>
-                      <dd>{dataset.data.meta.counts.sources} registered</dd>
-                    </div>
-                    <div className="meta-row">
-                      <dt>Last build</dt>
-                      <dd>{formatDate(dataset.data.meta.generatedAt)}</dd>
-                    </div>
-                  </dl>
-                  <p className="notice">
-                    Nothing here says a place is open. Every status is tied to a source and a date, and empty fields say
-                    “Not confirmed”.
-                  </p>
-                </div>
-              )}
-            </div>
-          </aside>
-        </div>
-
+        {searchOpen && <div className="mobile-search desktop-search" role="dialog" aria-label="Night Map search panel">
+          <div className="mobile-search-head"><SearchBar autoFocus onNavigate={() => setSearchOpen(false)} />
+            <button type="button" className="button ghost small" onClick={() => setSearchOpen(false)}>Close</button></div>
+          <p className="muted small">Search installed records, streets and Muni stops in the central-SF footprint.</p>
+        </div>}
         {layersOpen && <Overlay side="right" onClose={() => setLayersOpen(false)}><LayerDrawer onClose={() => setLayersOpen(false)} /></Overlay>}
         {settingsOpen && <Overlay side="right" onClose={() => setSettingsOpen(false)}><SettingsPanel onClose={() => setSettingsOpen(false)} /></Overlay>}
-        {composeTarget && (
-          <Overlay side="center" onClose={() => setComposeTarget(null)}>
-            <div className="composer-shell">
-              <FieldnoteComposer
-                target={composeTarget}
-                existing={composeTarget?.placeId?.startsWith('private:') ? state.observations.find((o) => `private:${o.id}` === composeTarget.placeId) : undefined}
-                onDone={() => setComposeTarget(null)}
-                onCancel={() => setComposeTarget(null)}
-              />
-            </div>
-          </Overlay>
-        )}
-        {paletteOpen && (
-          <CommandPalette
-            query={paletteQuery}
-            setQuery={setPaletteQuery}
-            onClose={() => {
-              setPaletteOpen(false);
-              setPaletteQuery('');
-            }}
-            onCommand={(command) => {
-              setPaletteOpen(false);
-              setPaletteQuery('');
-              if (command === 'layers') setLayersOpen(true);
-              else if (command === 'settings') setSettingsOpen(true);
-              else if (command === 'clear') actions.resetFilters();
-              else if (command === 'export') void import('../../services/storage').then((m) => m.exportPersonalData());
-              else if (command === 'compose') quickNote();
-              else openWorkspace(command as WorkspaceId);
-            }}
-          />
-        )}
+        {composeTarget && <Overlay side="center" onClose={() => setComposeTarget(null)}><div className="composer-shell">
+          <FieldnoteComposer target={composeTarget}
+            existing={composeTarget?.placeId?.startsWith('private:') ? state.observations.find((o) => `private:${o.id}` === composeTarget.placeId) : undefined}
+            onDone={() => setComposeTarget(null)} onCancel={() => setComposeTarget(null)} />
+        </div></Overlay>}
+        {paletteOpen && <CommandPalette query={paletteQuery} setQuery={setPaletteQuery} onClose={() => { setPaletteOpen(false); setPaletteQuery(''); }}
+          onCommand={(command) => { setPaletteOpen(false); setPaletteQuery('');
+            if (command === 'layers') setLayersOpen(true);
+            else if (command === 'settings') setSettingsOpen(true);
+            else if (command === 'clear') actions.resetFilters();
+            else if (command === 'export') void import('../../services/storage').then((m) => m.exportPersonalData());
+            else if (command === 'compose') quickNote();
+            else { openWorkspace(command as WorkspaceId); setDesktopPanelOpen(true); }
+          }} />}
         <Toast />
       </div>
     );
