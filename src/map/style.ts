@@ -5,7 +5,6 @@ import water from '../data/basemap/water.json';
 import coastline from '../data/basemap/coastline.json';
 import rail from '../data/basemap/rail.json';
 import basePoints from '../data/basemap/base-points.json';
-import landmarks from '../data/basemap/landmarks.json';
 import terrainMeta from '../data/terrain-meta.json';
 
 /** The elevation extract's own bounds, so a request is never made for a tile we do not ship. */
@@ -13,10 +12,11 @@ const TERRAIN_BBOX = terrainMeta.bbox as [number, number, number, number];
 
 export const THEME = {
   land: '#0D1317',
-  water: '#080E12',
+  water: '#061528',
   green: '#153A22',
   greenEdge: '#2A6240',
   coast: '#22333D',
+  coastGlow: '#7FB4C8',
   casing: '#070D10',
   arterial: '#35444D',
   major: '#2C3A42',
@@ -52,7 +52,6 @@ export function buildStyle(): StyleSpecification {
       coastline: { type: 'geojson', data: coastline as GeoJSON.FeatureCollection },
       rail: { type: 'geojson', data: rail as GeoJSON.FeatureCollection },
       labels: { type: 'geojson', data: basePoints as GeoJSON.FeatureCollection },
-      landmarks: { type: 'geojson', data: landmarks as GeoJSON.FeatureCollection },
       places: {
         type: 'geojson',
         data: empty,
@@ -94,6 +93,12 @@ export function buildStyle(): StyleSpecification {
       // user who never asks for them never pays for them. See src/map/incidents.ts.
       callsRecent: { type: 'geojson', data: empty },
       cases311: { type: 'geojson', data: empty },
+      // The building registry is fetched the first time its layer or the
+      // Buildings workspace is opened. Empty until then.
+      buildingRegistry: { type: 'geojson', data: empty },
+      // A point-only extract of vacancy/abandonment parcels, loaded by default
+      // because the map marks them without waiting for the full registry.
+      abandonedBuildings: { type: 'geojson', data: empty },
     },
     layers: [
       { id: 'bg', type: 'background', paint: { 'background-color': THEME.land } },
@@ -125,6 +130,21 @@ export function buildStyle(): StyleSpecification {
         type: 'fill',
         source: 'water',
         paint: { 'fill-color': THEME.water, 'fill-opacity': 1 },
+      },
+      {
+        // A soft halo under the crisp shoreline. It is deliberately wider than
+        // the line so the dark bay reads against the land at a glance without
+        // turning the coast into a bright border.
+        id: 'coast-glow',
+        type: 'line',
+        source: 'coastline',
+        layout: { 'line-cap': 'round', 'line-join': 'round' },
+        paint: {
+          'line-color': THEME.coastGlow,
+          'line-width': ['interpolate', ['linear'], ['zoom'], 11, 5, 14, 9, 18, 14],
+          'line-blur': ['interpolate', ['linear'], ['zoom'], 11, 3, 14, 6, 18, 9],
+          'line-opacity': 0.2,
+        },
       },
       {
         id: 'coastline',
@@ -284,37 +304,6 @@ export function buildStyle(): StyleSpecification {
         },
       },
       {
-        id: 'landmark-dots',
-        type: 'circle',
-        source: 'landmarks',
-        minzoom: 13,
-        paint: {
-          'circle-radius': ['interpolate', ['linear'], ['zoom'], 13, 3, 17, 6],
-          'circle-color': '#2B2A26',
-          'circle-stroke-color': '#9C8F7D',
-          'circle-stroke-width': 1.4,
-        },
-      },
-      {
-        id: 'landmark-labels',
-        type: 'symbol',
-        source: 'landmarks',
-        minzoom: 14.6,
-        layout: {
-          'text-field': ['get', 'name'],
-          'text-font': FONT,
-          'text-size': 11,
-          'text-offset': [0, 1.1],
-          'text-anchor': 'top',
-          'text-max-width': 8,
-        },
-        paint: {
-          'text-color': '#B3A793',
-          'text-halo-color': THEME.halo,
-          'text-halo-width': 1.5,
-        },
-      },
-      {
         id: 'stops-dots',
         type: 'circle',
         source: 'stops',
@@ -395,6 +384,95 @@ export function buildStyle(): StyleSpecification {
           'circle-stroke-color': '#1A1206',
           'circle-stroke-width': 1,
           'circle-opacity': 0.45,
+        },
+      },
+      {
+        id: 'building-registry-dots',
+        type: 'circle',
+        source: 'buildingRegistry',
+        minzoom: 13.6,
+        paint: {
+          'circle-radius': ['interpolate', ['linear'], ['zoom'], 13.6, 3.4, 16.5, 6, 18, 8],
+          'circle-color': [
+            'match',
+            ['get', 'status'],
+            'reported_vacant',
+            '#E0A458',
+            'vacancy_history',
+            '#B98A5A',
+            'under_demolition',
+            '#D96C4F',
+            'demolition_history',
+            '#9E7A5A',
+            'under_construction',
+            '#6E9AA8',
+            'code_enforcement',
+            '#C9B27A',
+            '#8A8F86',
+          ],
+          'circle-stroke-color': '#100C08',
+          'circle-stroke-width': 1.2,
+          'circle-opacity': 0.9,
+        },
+      },
+      {
+        id: 'abandoned-glow',
+        type: 'circle',
+        source: 'abandonedBuildings',
+        minzoom: 11.5,
+        paint: {
+          'circle-radius': ['interpolate', ['linear'], ['zoom'], 11.5, 4, 14, 9, 17, 22],
+          'circle-color': '#37D5FF',
+          'circle-blur': 1,
+          'circle-opacity': ['case', ['==', ['get', 'precision'], 'block_centroid'], 0.07, 0.15],
+          'circle-pitch-alignment': 'map',
+        },
+      },
+      {
+        id: 'abandoned-ring-soft',
+        type: 'circle',
+        source: 'abandonedBuildings',
+        minzoom: 11.5,
+        paint: {
+          'circle-radius': ['interpolate', ['linear'], ['zoom'], 11.5, 4.5, 14, 8, 17, 14],
+          'circle-color': 'rgba(0, 0, 0, 0)',
+          'circle-stroke-color': '#4BE0FF',
+          'circle-stroke-width': 3,
+          'circle-stroke-opacity': ['case', ['==', ['get', 'precision'], 'block_centroid'], 0.12, 0.24],
+          'circle-pitch-alignment': 'map',
+        },
+      },
+      {
+        id: 'abandoned-ring',
+        type: 'circle',
+        source: 'abandonedBuildings',
+        minzoom: 11.5,
+        paint: {
+          'circle-radius': ['interpolate', ['linear'], ['zoom'], 11.5, 3, 14, 5, 17, 7.5],
+          'circle-color': 'rgba(0, 0, 0, 0)',
+          'circle-stroke-color': '#9CEFFF',
+          'circle-stroke-width': 1.5,
+          'circle-stroke-opacity': ['case', ['==', ['get', 'precision'], 'block_centroid'], 0.5, 0.95],
+          'circle-pitch-alignment': 'map',
+        },
+      },
+      {
+        id: 'building-registry-labels',
+        type: 'symbol',
+        source: 'buildingRegistry',
+        minzoom: 16.4,
+        layout: {
+          'text-field': ['get', 'address'],
+          'text-font': FONT,
+          'text-size': 10,
+          'text-offset': [0, 0.9],
+          'text-anchor': 'top',
+          'text-max-width': 9,
+        },
+        paint: {
+          'text-color': '#D8C7A6',
+          'text-halo-color': THEME.halo,
+          'text-halo-width': 1.3,
         },
       },
       {
@@ -527,6 +605,57 @@ export function buildStyle(): StyleSpecification {
     ],
   };
   return style;
+}
+
+/**
+ * A stripped style for the corner overview. It carries only the geometry the
+ * main style already ships — land, water, parks, coastline — plus a rectangle
+ * for the current viewport, so it never requests a tile, glyph or font.
+ */
+export function buildMinimapStyle(): StyleSpecification {
+  return {
+    version: 8,
+    name: 'Night Map — overview',
+    sources: {
+      water: { type: 'geojson', data: water as GeoJSON.FeatureCollection },
+      coastline: { type: 'geojson', data: coastline as GeoJSON.FeatureCollection },
+      green: { type: 'geojson', data: green as GeoJSON.FeatureCollection },
+      viewport: { type: 'geojson', data: empty },
+    },
+    layers: [
+      { id: 'mini-bg', type: 'background', paint: { 'background-color': THEME.land } },
+      {
+        id: 'mini-green',
+        type: 'fill',
+        source: 'green',
+        paint: { 'fill-color': THEME.green, 'fill-opacity': 1 },
+      },
+      {
+        id: 'mini-water',
+        type: 'fill',
+        source: 'water',
+        paint: { 'fill-color': THEME.water, 'fill-opacity': 1 },
+      },
+      {
+        id: 'mini-coast',
+        type: 'line',
+        source: 'coastline',
+        paint: { 'line-color': THEME.coast, 'line-width': 0.8 },
+      },
+      {
+        id: 'mini-viewport',
+        type: 'fill',
+        source: 'viewport',
+        paint: { 'fill-color': THEME.accent, 'fill-opacity': 0.16 },
+      },
+      {
+        id: 'mini-viewport-line',
+        type: 'line',
+        source: 'viewport',
+        paint: { 'line-color': THEME.accent, 'line-width': 1.6 },
+      },
+    ],
+  };
 }
 
 export const EMPTY_FC = empty;

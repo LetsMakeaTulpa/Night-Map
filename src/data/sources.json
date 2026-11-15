@@ -102,25 +102,6 @@
   "importMethod": "Overpass API extract, simplified to about 1e-5 degrees, shipped as GeoJSON"
  },
  {
-  "id": "src:osm-landmarks",
-  "name": "OpenStreetMap historic features",
-  "url": "https://www.openstreetmap.org/copyright",
-  "provider": "OpenStreetMap contributors",
-  "sourceType": "open_map",
-  "license": "Open Data Commons Open Database License (ODbL) 1.0",
-  "licenseUrl": "https://opendatacommons.org/licenses/odbl/1-0/",
-  "retrievedAt": "2026-10-28",
-  "updateCadence": "Community-maintained; this extract is a snapshot",
-  "fields": [
-   "name",
-   "historic type",
-   "coordinates"
-  ],
-  "coverage": "Named historic nodes and ways in the core footprint",
-  "limitations": "Names and locations only. No historical narrative, date or archival source is attached, so these markers are labelled as community-mapped and are not evidence.",
-  "importMethod": "Overpass API extract"
- },
- {
   "id": "src:osm-buildings",
   "name": "OpenStreetMap building footprints and heights",
   "url": "https://www.openstreetmap.org/copyright",
@@ -577,5 +558,91 @@
   "coverage": "Worldwide, used only for explicit address lookup",
   "limitations": "Public demo service without an SLA. Only invoked when a user explicitly searches an address outside the Night Map index.",
   "importMethod": "HTTPS GET at request time, behind the GeocodingProvider interface"
+ },
+ {
+  "id": "src:sfgov-dbi-complaints",
+  "name": "DBI Complaints",
+  "url": "https://data.sfgov.org/d/gm2e-bten",
+  "provider": "San Francisco Department of Building Inspection (via DataSF)",
+  "sourceType": "open_data",
+  "license": "Open Data Commons Public Domain Dedication and License (PDDL)",
+  "licenseUrl": "https://opendatacommons.org/licenses/pddl/1-0/",
+  "retrievedAt": "2026-11-14",
+  "updateCadence": "Updated as the Department of Building Inspection publishes; each row carries data_as_of and data_loaded_at",
+  "fields": [
+   "complaint_number",
+   "date_filed",
+   "last_inspection_date",
+   "date_abated",
+   "block",
+   "lot",
+   "parcel_number",
+   "street_number",
+   "street_name",
+   "street_suffix",
+   "complaint_description",
+   "status",
+   "nov_type",
+   "data_as_of"
+  ],
+  "coverage": "Citywide complaint records, filtered to parcels inside the Night Map footprint that mention a vacant, abandoned, boarded, unsecured or derelict condition",
+  "limitations": "A complaint is a report or request, not an inspection finding or a court decision. The dataset carries block, lot and address but no coordinates, so it is joined to permits and notices on the parcel identifier; a complaint whose wording avoids the keyword list cannot be selected this way. Statuses are the City's own labels.",
+  "importMethod": "Socrata SODA API (gm2e-bten), keyword-filtered, cached by scripts/fetch-building-registry.mjs and joined on block/lot"
+ },
+ {
+  "id": "src:sfgov-dbi-permits",
+  "name": "Building Permits",
+  "url": "https://data.sfgov.org/d/i98e-djp9",
+  "provider": "San Francisco Department of Building Inspection (via DataSF)",
+  "sourceType": "open_data",
+  "license": "Open Data Commons Public Domain Dedication and License (PDDL)",
+  "licenseUrl": "https://opendatacommons.org/licenses/pddl/1-0/",
+  "retrievedAt": "2026-11-14",
+  "updateCadence": "Nightly dataset upload; each row carries data_as_of",
+  "fields": [
+   "permit_number",
+   "permit_type_definition",
+   "block",
+   "lot",
+   "status",
+   "filed_date",
+   "issued_date",
+   "description",
+   "number_of_existing_stories",
+   "existing_use",
+   "proposed_use",
+   "location",
+   "primary_address_flag",
+   "data_as_of"
+  ],
+  "coverage": "Permit rows inside the Night Map footprint, filed since 2005, used to place parcels and to record demolition and construction history",
+  "limitations": "A permit records what was applied for or authorised, not what was built. Status labels vary over time, and a permit can be filed years before or after the work. Coordinates are the parcel or address point the City publishes.",
+  "importMethod": "Socrata SODA API (i98e-djp9), filtered with within_box, cached and aggregated by scripts/fetch-building-registry.mjs"
+ },
+ {
+  "id": "src:sfgov-dbi-novs",
+  "name": "Notices of Violation",
+  "url": "https://data.sfgov.org/d/nbtm-fbw5",
+  "provider": "San Francisco Department of Building Inspection (via DataSF)",
+  "sourceType": "open_data",
+  "license": "Open Data Commons Public Domain Dedication and License (PDDL)",
+  "licenseUrl": "https://opendatacommons.org/licenses/pddl/1-0/",
+  "retrievedAt": "2026-11-14",
+  "updateCadence": "Updated with the Department's notice records; each row carries data_as_of",
+  "fields": [
+   "complaint_number",
+   "item_sequence_number",
+   "date_filed",
+   "block",
+   "lot",
+   "status",
+   "nov_category_description",
+   "item",
+   "location",
+   "data_as_of"
+  ],
+  "coverage": "Notice items inside the Night Map footprint, filed since 2005, used as the independent second record beside a complaint",
+  "limitations": "A notice states what an inspector required; it is not proof that a condition persists or that a building is empty. Item text is written by inspectors, so wording and detail vary and some rows carry no item text.",
+  "importMethod": "Socrata SODA API (nbtm-fbw5), filtered with within_box, cached and aggregated by scripts/fetch-building-registry.mjs"
  }
 ]

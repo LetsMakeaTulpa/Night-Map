@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import maplibregl, { type Map as MapLibreMap, type MapGeoJSONFeature } from 'maplibre-gl';
 import 'maplibre-gl/dist/maplibre-gl.css';
-import { buildStyle, EMPTY_FC } from './style';
+import { buildMinimapStyle, buildStyle, EMPTY_FC } from './style';
 import { buildMarkerImages, buildLocationDot } from './icons';
 import { useStore } from '../state/store';
 import { CATEGORIES, SWATCH } from '../domain/categories';
@@ -18,6 +18,7 @@ import {
   loadBuildingTiles,
   visibleTileKeys,
 } from './buildings';
+import { fetchLiveCalls } from './live-calls';
 import {
   ageInWords,
   INCIDENT_LAYER,
@@ -25,20 +26,42 @@ import {
   INCIDENT_SOURCE,
   cachedIncidentFeed,
   feedSummary,
-  incidentCounts,
   loadIncidentFeed,
+  type IncidentCollection,
   type IncidentFeed,
   type IncidentFeature,
 } from './incidents';
 import { IncidentCard } from '../features/incidents/IncidentCard';
+import { StreetPanel } from '../features/street/StreetPanel';
+import { SURVEY_FLY_TO_EVENT, type SurveyFlyToDetail } from './survey-flyto';
+import { MAPILLARY_TOKEN_EVENT, readMapillaryToken } from '../services/mapillary';
+import {
+  addMapillaryCoverage,
+  MAPILLARY_COVERAGE_SOURCE,
+  removeMapillaryCoverage,
+} from './mapillary-coverage';
+import { buildingById, cachedBuildingRegistry, loadBuildingRegistry } from '../data/building-registry';
+import { cachedAbandonedBuildings, loadAbandonedBuildings } from '../data/abandoned-buildings';
+import type { AbandonedBuildingFile, BuildingDossier } from '../domain/types';
+
+export interface MapLiveCounts {
+  calls: number;
+  cases311: number;
+  /** Positioned dossiers currently loaded, not the table-only manifest total. */
+  registry: number;
+  /** Located vacancy/abandonment parcels currently drawn. */
+  abandoned: number;
+}
 
 interface MapViewProps {
   views: PlaceView[];
   onOpenLayers: () => void;
+  onLiveCountsChange?: (counts: MapLiveCounts) => void;
+  onAddMissingPlace?: (coordinates: [number, number]) => void;
 }
 
 const MAP_PADDING = () => {
-  const desktop = window.innerWidth >= 1000;
+  const desktop = window.innerWidth >= 960;
   return { top: 76, bottom: desktop ? 76 : 240, left: desktop ? 348 : 24, right: desktop ? 424 : 24 };
 };
 
@@ -61,10 +84,13 @@ function applyPulse(map: MapLibreMap, phase: number) {
   map.setPaintProperty(INCIDENT_PULSE_LAYER, 'circle-stroke-width', phase === 1 ? 2.8 : 1.4);
 }
 
-export function MapView({ views, onOpenLayers }: MapViewProps) {
+export function MapView({ views, onOpenLayers, onLiveCountsChange, onAddMissingPlace }: MapViewProps) {
   const { state, actions } = useStore();
   const containerRef = useRef<HTMLDivElement | null>(null);
   const mapRef = useRef<MapLibreMap | null>(null);
+  const minimapContainerRef = useRef<HTMLDivElement | null>(null);
+  const miniMapRef = useRef<MapLibreMap | null>(null);
+  const [minimapOpen, setMinimapOpen] = useState(true);
   const [ready, setReady] = useState(false);
   const [mapError, setMapError] = useState<string | null>(null);
   const [legendOpen, setLegendOpen] = useState(false);
@@ -81,16 +107,32 @@ export function MapView({ views, onOpenLayers }: MapViewProps) {
     cases311: 0,
   });
   const [incidentIssue, setIncidentIssue] = useState<string | null>(null);
+  const [callsLive, setCallsLive] = useState<{ at: number; newest: string | null } | null>(null);
+  const [callsLiveError, setCallsLiveError] = useState<string | null>(null);
+  const [streetOpen, setStreetOpen] = useState(false);
+  const [streetCenter, setStreetCenter] = useState<[number, number]>([-122.4085, 37.7835]);
+  const [missingPlacePicking, setMissingPlacePicking] = useState(false);
+  const [mapillaryToken, setMapillaryToken] = useState<string | null>(() => readMapillaryToken());
+  const [coverageIssue, setCoverageIssue] = useState<string | null>(null);
+  const [registryState, setRegistryState] = useState<{ loaded: number; error: string | null }>({
+    loaded: 0,
+    error: null,
+  });
+  const [abandonedState, setAbandonedState] = useState<{ loaded: number; error: string | null }>({
+    loaded: 0,
+    error: null,
+  });
   const locationMarker = useRef<maplibregl.Marker | null>(null);
+  const gpsFirstFollow = useRef(true);
   const selectedPlace = state.selectedPlaceId
     ? dataset.placeById.get(state.selectedPlaceId) ?? (state.selectedPlaceId.startsWith('private:')
         ? (() => {
             const observation = state.observations.find((item) => `private:${item.id}` === state.selectedPlaceId);
             if (!observation?.geometry) return null;
-            const category = observation.type === 'passage_discovery' ? 'passage'
+            const category = observation.suggestedCategory ?? (observation.type === 'passage_discovery' ? 'passage'
               : observation.type === 'popos_observation' ? 'popos'
                 : observation.type === 'entrance_observation' || observation.type === 'stairs_ramp_observation' ? 'pedestrian_connection'
-                  : observation.type === 'research_lead' ? 'research_lead' : 'urban_clue';
+                  : 'services');
             return { id: state.selectedPlaceId, name: observation.placeName ?? 'Private field observation', category, geometry: observation.geometry } as { id: string; name: string; category: typeof CATEGORIES[number]['id']; geometry: { type: 'Point'; coordinates: [number, number] } };
           })()
         : null)
@@ -98,6 +140,15 @@ export function MapView({ views, onOpenLayers }: MapViewProps) {
   const selectedStop = state.selectedStopId
     ? dataset.data.transit.find((s) => s.id === state.selectedStopId)
     : null;
+  const selectedBuilding = buildingById(state.selectedBuildingId);
+
+  // The Street panel owns token entry, but the coverage layer must react when
+  // the token is saved or removed without waiting for a page reload.
+  useEffect(() => {
+    const sync = () => setMapillaryToken(readMapillaryToken());
+    window.addEventListener(MAPILLARY_TOKEN_EVENT, sync);
+    return () => window.removeEventListener(MAPILLARY_TOKEN_EVENT, sync);
+  }, []);
 
   useEffect(() => {
     if (!containerRef.current || mapRef.current) return;
@@ -170,6 +221,7 @@ export function MapView({ views, onOpenLayers }: MapViewProps) {
       // Elevation tiles are fetched on demand, so the first offline attempt can
       // legitimately fail. Say so instead of showing a flat map as if it were real.
       if (sourceId === TERRAIN_SOURCE_ID) setTerrainTilesMissing(true);
+      if (sourceId === MAPILLARY_COVERAGE_SOURCE) setCoverageIssue(message);
       console.warn('[night-map] map error', message);
     });
     map.on('sourcedata', (event) => {
@@ -183,6 +235,162 @@ export function MapView({ views, onOpenLayers }: MapViewProps) {
       mapRef.current = null;
     };
   }, []);
+
+  // A corner overview built from the same local geometry. Clicking recenters;
+  // dragging moves the viewport continuously. It has no labels or terrain of
+  // its own, so it can never compete with the map it is describing.
+  useEffect(() => {
+    if (!minimapOpen || !ready) return;
+    const main = mapRef.current;
+    const container = minimapContainerRef.current;
+    if (!main || !container || miniMapRef.current) return;
+    const shell = container.parentElement;
+    let mini: MapLibreMap;
+    try {
+      mini = new maplibregl.Map({
+        container,
+        style: buildMinimapStyle(),
+        center: [-122.4194, 37.7749],
+        zoom: 11.45,
+        minZoom: 11.2,
+        maxZoom: 14,
+        maxBounds: [
+          [-122.475, 37.735],
+          [-122.345, 37.82],
+        ],
+        interactive: false,
+        attributionControl: false,
+        fadeDuration: 0,
+      });
+    } catch (err) {
+      console.warn('[night-map] overview map failed to start', err);
+      return;
+    }
+    miniMapRef.current = mini;
+
+    const update = () => {
+      if (!mini.isStyleLoaded()) return;
+      const bounds = main.getBounds();
+      const nw = bounds.getNorthWest();
+      const se = bounds.getSouthEast();
+      (mini.getSource('viewport') as maplibregl.GeoJSONSource | undefined)?.setData({
+        type: 'FeatureCollection',
+        features: [
+          {
+            type: 'Feature',
+            properties: {},
+            geometry: {
+              type: 'Polygon',
+              coordinates: [
+                [
+                  [nw.lng, nw.lat],
+                  [se.lng, nw.lat],
+                  [se.lng, se.lat],
+                  [nw.lng, se.lat],
+                  [nw.lng, nw.lat],
+                ],
+              ],
+            },
+          },
+        ],
+      });
+    };
+
+    let activePointer: number | null = null;
+    let dragging = false;
+    let moved = false;
+    let suppressClickUntil = 0;
+    let start = { x: 0, y: 0 };
+    let pending: [number, number] | null = null;
+    let frame = 0;
+
+    const targetAt = (event: PointerEvent | MouseEvent): [number, number] | null => {
+      if (!mini.isStyleLoaded()) return null;
+      const rect = container.getBoundingClientRect();
+      const x = Math.min(rect.width, Math.max(0, event.clientX - rect.left));
+      const y = Math.min(rect.height, Math.max(0, event.clientY - rect.top));
+      const target = mini.unproject([x, y]);
+      return [target.lng, target.lat];
+    };
+
+    const flush = () => {
+      frame = 0;
+      if (!pending) return;
+      main.jumpTo({ center: pending });
+      pending = null;
+    };
+
+    const queueCenter = (center: [number, number] | null) => {
+      if (!center) return;
+      pending = center;
+      if (frame === 0) frame = requestAnimationFrame(flush);
+    };
+
+    const onClick = (event: MouseEvent) => {
+      if (performance.now() < suppressClickUntil) {
+        suppressClickUntil = 0;
+        return;
+      }
+      const target = targetAt(event);
+      if (target) main.easeTo({ center: target, duration: 450 });
+    };
+
+    const onPointerDown = (event: PointerEvent) => {
+      if (event.button !== 0 || !mini.isStyleLoaded()) return;
+      activePointer = event.pointerId;
+      dragging = true;
+      moved = false;
+      suppressClickUntil = 0;
+      start = { x: event.clientX, y: event.clientY };
+      (shell ?? container).classList.add('is-dragging');
+      container.setPointerCapture?.(event.pointerId);
+      event.preventDefault();
+    };
+
+    const onPointerMove = (event: PointerEvent) => {
+      if (!dragging || event.pointerId !== activePointer) return;
+      if (!moved && Math.hypot(event.clientX - start.x, event.clientY - start.y) < 3) return;
+      moved = true;
+      queueCenter(targetAt(event));
+      event.preventDefault();
+    };
+
+    const onPointerEnd = (event: PointerEvent) => {
+      if (event.pointerId !== activePointer) return;
+      if (container.hasPointerCapture?.(event.pointerId)) container.releasePointerCapture(event.pointerId);
+      dragging = false;
+      activePointer = null;
+      (shell ?? container).classList.remove('is-dragging');
+      if (frame !== 0) {
+        cancelAnimationFrame(frame);
+        frame = 0;
+        if (pending) {
+          main.jumpTo({ center: pending });
+          pending = null;
+        }
+      }
+      if (moved) suppressClickUntil = performance.now() + 400;
+    };
+
+    mini.on('load', update);
+    main.on('move', update);
+    container.addEventListener('click', onClick);
+    container.addEventListener('pointerdown', onPointerDown);
+    container.addEventListener('pointermove', onPointerMove);
+    container.addEventListener('pointerup', onPointerEnd);
+    container.addEventListener('pointercancel', onPointerEnd);
+    return () => {
+      main.off('move', update);
+      container.removeEventListener('click', onClick);
+      container.removeEventListener('pointerdown', onPointerDown);
+      container.removeEventListener('pointermove', onPointerMove);
+      container.removeEventListener('pointerup', onPointerEnd);
+      container.removeEventListener('pointercancel', onPointerEnd);
+      if (frame !== 0) cancelAnimationFrame(frame);
+      mini.remove();
+      miniMapRef.current = null;
+    };
+  }, [minimapOpen, ready]);
 
   // Keep the canvas in sync with filtered data.
   useEffect(() => {
@@ -307,6 +515,21 @@ export function MapView({ views, onOpenLayers }: MapViewProps) {
     }
   }, [state.route.plan, state.route.stops, ready]);
 
+  // Mapillary coverage is mounted only while its layer is on and a token is
+  // present. Nothing is requested merely because the layer exists.
+  const coverageOn = Boolean(state.layers['mapillary-coverage']);
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map || !ready) return;
+    if (!coverageOn || !mapillaryToken) {
+      removeMapillaryCoverage(map);
+      setCoverageIssue(null);
+      return;
+    }
+    setCoverageIssue(null);
+    addMapillaryCoverage(map, mapillaryToken);
+  }, [coverageOn, mapillaryToken, ready]);
+
   // Layer visibility
   useEffect(() => {
     const map = mapRef.current;
@@ -322,7 +545,6 @@ export function MapView({ views, onOpenLayers }: MapViewProps) {
     set(['hood-labels'], state.layers.neighbourhoods);
     set(['rail-line'], state.layers['transit-lines']);
     set(['stops-dots', 'stops-labels'], state.layers['transit-stops']);
-    set(['landmark-dots', 'landmark-labels'], state.layers.landmarks);
     set(['hillshade'], state.layers.terrain);
     set([BUILDINGS_LAYER_ID], state.layers['buildings-3d']);
     set(['places-symbol', 'cluster-halo', 'cluster-count'], state.layers.resources);
@@ -330,11 +552,12 @@ export function MapView({ views, onOpenLayers }: MapViewProps) {
     set(['obs-symbol'], state.layers.observations);
     set([INCIDENT_PULSE_LAYER, INCIDENT_LAYER.calls], Boolean(state.layers['calls-recent']));
     set([INCIDENT_LAYER.cases311], Boolean(state.layers['cases-311']));
+    set(['building-registry-dots', 'building-registry-labels'], Boolean(state.layers['building-registry']));
+    set(
+      ['abandoned-glow', 'abandoned-ring-soft', 'abandoned-ring'],
+      Boolean(state.layers['abandoned-buildings']),
+    );
 
-    if (map.getLayer('landmark-dots')) {
-      map.setPaintProperty('landmark-dots', 'circle-opacity', state.layerOpacity.landmarks ?? 0.75);
-      map.setPaintProperty('landmark-labels', 'text-opacity', state.layerOpacity.landmarks ?? 0.75);
-    }
     if (map.getLayer('hillshade')) {
       map.setPaintProperty('hillshade', 'hillshade-exaggeration', state.layerOpacity.terrain ?? 0.32);
     }
@@ -439,56 +662,197 @@ export function MapView({ views, onOpenLayers }: MapViewProps) {
     };
   }, [ready]);
 
-  // Reported activity: two published City snapshots, fetched only when their
-  // layer is switched on. Nothing is requested behind the user's back.
+  // Reported activity. The calls layer refreshes every two minutes from the
+  // City's 10-minute-delayed CAD extract and keeps the bundled snapshot as an
+  // offline fallback; 311 is nightly, so its snapshot is the honest unit.
   const callsOn = Boolean(state.layers['calls-recent']);
   const cases311On = Boolean(state.layers['cases-311']);
+
   useEffect(() => {
     const map = mapRef.current;
-    if (!map || !ready) return;
-    const wanted: IncidentFeed[] = [];
-    if (callsOn) wanted.push('calls');
-    if (cases311On) wanted.push('cases311');
-    if (wanted.length === 0) {
-      setIncidentIssue(null);
-      setIncidentCard(null);
+    if (!map || !ready || !cases311On) return;
+    const source = map.getSource(INCIDENT_SOURCE.cases311) as maplibregl.GeoJSONSource | undefined;
+    const held = cachedIncidentFeed('cases311');
+    if (held) {
+      source?.setData(held as unknown as GeoJSON.FeatureCollection);
+      setIncidentCountsState((prev) => ({ ...prev, cases311: held.features.length }));
       return;
     }
-    // A feed already in memory is drawn immediately, so toggling a layer off and
-    // on again never flashes an empty map.
-    for (const feed of wanted) {
-      const held = cachedIncidentFeed(feed);
-      if (held) {
-        (map.getSource(INCIDENT_SOURCE[feed]) as maplibregl.GeoJSONSource | undefined)?.setData(
-          held as unknown as GeoJSON.FeatureCollection,
-        );
-      }
-    }
     let cancelled = false;
-    const load = async () => {
-      for (const feed of wanted) {
-        if (cachedIncidentFeed(feed)) continue;
-        try {
-          const collection = await loadIncidentFeed(feed);
-          if (cancelled) return;
-          (map.getSource(INCIDENT_SOURCE[feed]) as maplibregl.GeoJSONSource | undefined)?.setData(
-            collection as unknown as GeoJSON.FeatureCollection,
-          );
-        } catch (err) {
-          if (!cancelled) {
-            setIncidentIssue(
-              `${feed === 'calls' ? 'Dispatched calls' : '311 cases'} unavailable offline — ${(err as Error).message}`,
-            );
-          }
-        }
-      }
-      if (!cancelled) setIncidentCountsState(incidentCounts());
-    };
-    void load();
+    loadIncidentFeed('cases311')
+      .then((collection) => {
+        if (cancelled) return;
+        source?.setData(collection as unknown as GeoJSON.FeatureCollection);
+        setIncidentCountsState((prev) => ({ ...prev, cases311: collection.features.length }));
+      })
+      .catch((err: Error) => {
+        if (!cancelled) setIncidentIssue(`311 cases unavailable offline — ${err.message}`);
+      });
     return () => {
       cancelled = true;
     };
-  }, [callsOn, cases311On, ready]);
+  }, [cases311On, ready]);
+
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map || !ready) return;
+    if (!callsOn) {
+      setCallsLive(null);
+      setCallsLiveError(null);
+      setIncidentCard(null);
+      return;
+    }
+    const source = map.getSource(INCIDENT_SOURCE.calls) as maplibregl.GeoJSONSource | undefined;
+    let cancelled = false;
+    let liveApplied = false;
+
+    const apply = (collection: IncidentCollection) => {
+      source?.setData(collection as unknown as GeoJSON.FeatureCollection);
+      setIncidentCountsState((prev) => ({ ...prev, calls: collection.features.length }));
+    };
+
+    const fallback = async () => {
+      const snapshot = cachedIncidentFeed('calls');
+      if (snapshot) {
+        apply(snapshot);
+        return;
+      }
+      try {
+        const collection = await loadIncidentFeed('calls');
+        if (!cancelled) apply(collection);
+      } catch (err) {
+        if (!cancelled) setIncidentIssue(`Dispatched calls unavailable offline — ${(err as Error).message}`);
+      }
+    };
+
+    const refresh = async (force: boolean) => {
+      try {
+        if (!navigator.onLine) throw new Error('this device is offline');
+        const result = await fetchLiveCalls(force);
+        if (cancelled) return;
+        liveApplied = true;
+        apply(result.collection);
+        setCallsLive({ at: result.fetchedAt, newest: result.newest });
+        setCallsLiveError(null);
+        setIncidentIssue(null);
+      } catch (err) {
+        if (cancelled) return;
+        setCallsLiveError((err as Error).message);
+        if (!liveApplied) await fallback();
+      }
+    };
+
+    void refresh(false);
+    const timer = window.setInterval(() => {
+      if (document.visibilityState === 'visible') void refresh(true);
+    }, 120_000);
+    const onVisible = () => {
+      if (document.visibilityState === 'visible') void refresh(true);
+    };
+    document.addEventListener('visibilitychange', onVisible);
+    return () => {
+      cancelled = true;
+      window.clearInterval(timer);
+      document.removeEventListener('visibilitychange', onVisible);
+    };
+  }, [callsOn, ready]);
+
+  // Vacancy/abandonment markers are a point-only extract, small enough to load
+  // by default. They are deliberately separate from the multi-megabyte registry.
+  const abandonedOn = Boolean(state.layers['abandoned-buildings']);
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map || !ready) return;
+    const source = map.getSource('abandonedBuildings') as maplibregl.GeoJSONSource | undefined;
+    if (!abandonedOn) {
+      source?.setData(EMPTY_FC);
+      setAbandonedState({ loaded: 0, error: null });
+      return;
+    }
+    let cancelled = false;
+    const apply = (file: AbandonedBuildingFile) => {
+      if (cancelled) return;
+      const features = file.dossiers.map((dossier) => ({
+        type: 'Feature' as const,
+        properties: {
+          id: dossier.id,
+          address: dossier.address,
+          status: dossier.status,
+          precision: dossier.locationPrecision,
+        },
+        geometry: { type: 'Point' as const, coordinates: dossier.coordinates },
+      }));
+      source?.setData({ type: 'FeatureCollection', features } as unknown as GeoJSON.FeatureCollection);
+      setAbandonedState({ loaded: features.length, error: null });
+    };
+    const held = cachedAbandonedBuildings();
+    if (held) apply(held);
+    else {
+      loadAbandonedBuildings()
+        .then(apply)
+        .catch((err: Error) => {
+          if (!cancelled) setAbandonedState({ loaded: 0, error: err.message });
+        });
+    }
+    return () => {
+      cancelled = true;
+    };
+  }, [abandonedOn, ready]);
+
+  // Building registry: a parcel dossier set, fetched the first time the layer is
+  // switched on and kept by the service worker afterwards. Counts in the status
+  // chip come from what actually loaded, not from the manifest.
+  const registryOn = Boolean(state.layers['building-registry']);
+  useEffect(() => {
+    onLiveCountsChange?.({
+      calls: incidentCountsState.calls,
+      cases311: incidentCountsState.cases311,
+      registry: registryState.loaded,
+      abandoned: abandonedState.loaded,
+    });
+  }, [
+    incidentCountsState.calls,
+    incidentCountsState.cases311,
+    registryState.loaded,
+    abandonedState.loaded,
+    onLiveCountsChange,
+  ]);
+
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map || !ready) return;
+    const source = map.getSource('buildingRegistry') as maplibregl.GeoJSONSource | undefined;
+    if (!registryOn) {
+      source?.setData(EMPTY_FC);
+      setRegistryState({ loaded: 0, error: null });
+      return;
+    }
+    let cancelled = false;
+    const apply = (registry: { dossiers: BuildingDossier[] }) => {
+      if (cancelled) return;
+      const features = registry.dossiers
+        .filter((dossier) => dossier.coordinates)
+        .map((dossier) => ({
+          type: 'Feature' as const,
+          properties: { id: dossier.id, status: dossier.status, address: dossier.address },
+          geometry: { type: 'Point' as const, coordinates: dossier.coordinates as [number, number] },
+        }));
+      source?.setData({ type: 'FeatureCollection', features } as unknown as GeoJSON.FeatureCollection);
+      setRegistryState({ loaded: features.length, error: null });
+    };
+    const held = cachedBuildingRegistry();
+    if (held) apply(held);
+    else {
+      loadBuildingRegistry()
+        .then(apply)
+        .catch((err: Error) => {
+          if (!cancelled) setRegistryState({ loaded: 0, error: err.message });
+        });
+    }
+    return () => {
+      cancelled = true;
+    };
+  }, [registryOn, ready]);
 
   // The alert blink. A steady ring is drawn instead when the reader prefers
   // reduced motion, and the animation pauses while the tab is hidden, so a phone
@@ -514,18 +878,44 @@ export function MapView({ views, onOpenLayers }: MapViewProps) {
     };
   }, [callsOn, ready]);
 
+  // Street imagery follows the map only while its panel is open. Closing the
+  // panel stops the requests entirely; nothing is fetched in the background.
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map || !ready || !streetOpen) return;
+    const update = () => {
+      const center = map.getCenter();
+      setStreetCenter([center.lng, center.lat]);
+    };
+    map.on('moveend', update);
+    return () => {
+      map.off('moveend', update);
+    };
+  }, [streetOpen, ready]);
+
   // Click handling
   useEffect(() => {
     const map = mapRef.current;
     if (!map || !ready) return;
 
     const handleClick = (event: maplibregl.MapMouseEvent) => {
+      if (missingPlacePicking) {
+        setMissingPlacePicking(false);
+        onAddMissingPlace?.([event.lngLat.lng, event.lngLat.lat]);
+        return;
+      }
       if (state.route.picking) return; // handled by a dedicated listener below
       const incidentLayers = [INCIDENT_LAYER.calls, INCIDENT_LAYER.cases311].filter((id) => map.getLayer(id));
       const hits = map.queryRenderedFeatures(event.point, {
-        layers: ['places-symbol', 'stops-dots', 'landmark-dots', ...incidentLayers].filter((id) =>
-          map.getLayer(id),
-        ),
+        layers: [
+          'places-symbol',
+          'stops-dots',
+          'abandoned-glow',
+          'abandoned-ring-soft',
+          'abandoned-ring',
+          'building-registry-dots',
+          ...incidentLayers,
+        ].filter((id) => map.getLayer(id)),
       });
       // A tap resolves to the dot actually under the finger. Reported activity
       // wins when it is the nearer feature, so a red dot stays tappable where it
@@ -546,9 +936,10 @@ export function MapView({ views, onOpenLayers }: MapViewProps) {
 
       const placeHit = hits.find((h) => h.layer.id === 'places-symbol');
       const stopHit = hits.find((h) => h.layer.id === 'stops-dots');
-      const landmarkHit = hits.find((h) => h.layer.id === 'landmark-dots');
-      const markerHit = placeHit ?? stopHit ?? landmarkHit ?? null;
+      const markerHit = placeHit ?? stopHit ?? null;
       const incidentHit = nearestOf(incidentLayers);
+      const abandonedHit = nearestOf(['abandoned-glow', 'abandoned-ring-soft', 'abandoned-ring']);
+      const buildingHit = nearestOf(['building-registry-dots']);
 
       if (incidentHit && (!markerHit || distanceToTap(incidentHit) < distanceToTap(markerHit))) {
         const geometry = incidentHit.geometry as GeoJSON.Point;
@@ -557,6 +948,17 @@ export function MapView({ views, onOpenLayers }: MapViewProps) {
           properties: incidentHit.properties as unknown as IncidentFeature['properties'],
           coordinates: [geometry.coordinates[0], geometry.coordinates[1]],
         });
+        return;
+      }
+      // A parcel marker carries a dossier, so it opens the registry rather than
+      // the place inspector. It is preferred only when it is the nearer marker.
+      const dossierHit =
+        abandonedHit && (!buildingHit || distanceToTap(abandonedHit) <= distanceToTap(buildingHit))
+          ? abandonedHit
+          : buildingHit;
+      if (dossierHit && (!markerHit || distanceToTap(dossierHit) < distanceToTap(markerHit))) {
+        const id = String(dossierHit.properties?.id ?? '');
+        if (id) actions.selectBuilding(id);
         return;
       }
       if (placeHit) {
@@ -568,13 +970,6 @@ export function MapView({ views, onOpenLayers }: MapViewProps) {
       }
       if (stopHit) {
         actions.selectStop(String(stopHit.properties?.id));
-        return;
-      }
-      if (landmarkHit) {
-        const match = dataset.data.places.find(
-          (p) => p.category === 'history' && p.name === landmarkHit.properties?.name,
-        );
-        if (match) actions.selectPlace(match.id);
         return;
       }
       const clusters = map.queryRenderedFeatures(event.point, { layers: ['cluster-halo'] });
@@ -596,7 +991,10 @@ export function MapView({ views, onOpenLayers }: MapViewProps) {
         layers: [
           'places-symbol',
           'stops-dots',
-          'landmark-dots',
+          'abandoned-glow',
+          'abandoned-ring-soft',
+          'abandoned-ring',
+          'building-registry-dots',
           'cluster-halo',
           INCIDENT_LAYER.calls,
           INCIDENT_LAYER.cases311,
@@ -629,10 +1027,71 @@ export function MapView({ views, onOpenLayers }: MapViewProps) {
       map.off('mousemove', handleMove);
       map.off('click', handlePick);
     };
-  }, [ready, state.route.picking, actions]);
+  }, [ready, state.route.picking, missingPlacePicking, onAddMissingPlace, actions]);
 
   // Fly to a selected place and account for the panels.
   const lastFocus = useRef<string | null>(null);
+
+  // Nearby survey cards get a short cinematic preview: fly to the place at a
+  // tilt, hold it for a beat, then settle back to the camera orientation the
+  // reader had before. Reduced-motion readers skip the flourish entirely and
+  // keep the ordinary selection centring below.
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map || !ready) return;
+    let settle: number | null = null;
+    const onSurveyFlyTo = (event: Event) => {
+      const detail = (event as CustomEvent<SurveyFlyToDetail>).detail;
+      if (!detail?.placeId || !detail.coordinates) return;
+      if (
+        typeof window.matchMedia === 'function' &&
+        window.matchMedia('(prefers-reduced-motion: reduce)').matches
+      ) {
+        return;
+      }
+      const startPitch = map.getPitch();
+      const startBearing = map.getBearing();
+      const from = map.getCenter();
+      const radians = Math.PI / 180;
+      const bearing =
+        ((Math.atan2(
+          (detail.coordinates[0] - from.lng) * Math.cos(detail.coordinates[1] * radians),
+          detail.coordinates[1] - from.lat,
+        ) *
+          180) /
+          Math.PI +
+          360) %
+        360;
+
+      lastFocus.current = detail.placeId;
+      if (settle !== null) window.clearTimeout(settle);
+      map.stop();
+      map.flyTo({
+        center: detail.coordinates,
+        zoom: Math.max(map.getZoom(), 16),
+        pitch: Math.max(52, startPitch),
+        bearing,
+        padding: MAP_PADDING(),
+        duration: 950,
+        curve: 1.35,
+        essential: true,
+      });
+      settle = window.setTimeout(() => {
+        map.easeTo({
+          pitch: startPitch,
+          bearing: startBearing,
+          duration: 850,
+          essential: true,
+        });
+      }, 1100);
+    };
+    window.addEventListener(SURVEY_FLY_TO_EVENT, onSurveyFlyTo);
+    return () => {
+      window.removeEventListener(SURVEY_FLY_TO_EVENT, onSurveyFlyTo);
+      if (settle !== null) window.clearTimeout(settle);
+    };
+  }, [ready]);
+
   useEffect(() => {
     const map = mapRef.current;
     if (!map || !ready) return;
@@ -648,6 +1107,39 @@ export function MapView({ views, onOpenLayers }: MapViewProps) {
       duration: 700,
     });
   }, [selectedPlace, selectedStop, ready]);
+
+  // Fly to a selected building dossier. The registry may not be in memory yet on
+  // a deep link, so it is fetched once here rather than silently doing nothing.
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map || !ready || !state.selectedBuildingId) return;
+    const fly = (coordinates: [number, number]) => {
+      map.easeTo({
+        center: coordinates,
+        zoom: Math.max(map.getZoom(), 16.2),
+        padding: MAP_PADDING(),
+        duration: 700,
+      });
+    };
+    const held = buildingById(state.selectedBuildingId);
+    if (held?.coordinates) {
+      fly(held.coordinates);
+      return;
+    }
+    let cancelled = false;
+    loadBuildingRegistry()
+      .then((registry) => {
+        if (cancelled) return;
+        const dossier = registry.dossiers.find((entry) => entry.id === state.selectedBuildingId);
+        if (dossier?.coordinates) fly(dossier.coordinates);
+      })
+      .catch(() => {
+        /* the dossier itself reports the failure */
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [state.selectedBuildingId, ready]);
 
   // Session-only location dot. Nothing is persisted.
   useEffect(() => {
@@ -669,7 +1161,43 @@ export function MapView({ views, onOpenLayers }: MapViewProps) {
     } else {
       locationMarker.current.setLngLat(loc.coordinates);
     }
-  }, [state.userLocation, ready]);
+    const el = locationMarker.current.getElement();
+    el.classList.toggle('is-locked', state.gpsLocked);
+    el.setAttribute(
+      'aria-label',
+      state.gpsLocked ? 'Your live location, GPS locked' : 'Your approximate location',
+    );
+  }, [state.userLocation, state.gpsLocked, ready]);
+
+  // GPS lock is a live follow, not a one-off fix. The first fix also zooms in;
+  // later fixes only move the camera so a user's chosen scale is preserved.
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map || !ready || !state.gpsLocked || !state.userLocation) {
+      gpsFirstFollow.current = true;
+      return;
+    }
+    const first = gpsFirstFollow.current;
+    gpsFirstFollow.current = false;
+    map.easeTo({
+      center: state.userLocation.coordinates,
+      zoom: first ? Math.max(map.getZoom(), 16) : undefined,
+      padding: MAP_PADDING(),
+      duration: first ? 650 : 400,
+    });
+  }, [state.gpsLocked, state.userLocation, ready]);
+
+  // A real map drag means the person wants to look around. Release the follow
+  // lock rather than snapping the map back on the next GPS update.
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map || !ready || !state.gpsLocked) return;
+    const release = () => actions.stopGpsLock();
+    map.on('dragstart', release);
+    return () => {
+      map.off('dragstart', release);
+    };
+  }, [ready, state.gpsLocked, actions]);
 
   const recenter = () => {
     const map = mapRef.current;
@@ -680,6 +1208,21 @@ export function MapView({ views, onOpenLayers }: MapViewProps) {
 
   const stopCount = views.length;
   const is3d = camera.pitch > 4;
+
+  const openStreetImagery = () => {
+    if (streetOpen) {
+      setStreetOpen(false);
+      return;
+    }
+    const selected = selectedPlace?.geometry.coordinates ?? selectedBuilding?.coordinates ?? null;
+    const map = mapRef.current;
+    if (selected) setStreetCenter(selected);
+    else if (map) {
+      const center = map.getCenter();
+      setStreetCenter([center.lng, center.lat]);
+    }
+    setStreetOpen(true);
+  };
 
   /**
    * Camera moves that are guaranteed to arrive. An eased move is only as
@@ -722,7 +1265,7 @@ export function MapView({ views, onOpenLayers }: MapViewProps) {
   const resetNorth = () => moveCamera({ pitch: 0, bearing: 0 });
 
   return (
-    <div className="map-stage">
+    <div className={`map-stage ${minimapOpen ? 'has-minimap' : ''}`}>
       <div ref={containerRef} className="map-canvas" role="application" aria-label="Night Map of central San Francisco" />
 
       {mapError && (
@@ -755,10 +1298,21 @@ export function MapView({ views, onOpenLayers }: MapViewProps) {
           </span>
         )}
         {callsOn && (
-          <span className="map-scale-note is-alert" data-testid="calls-status">
+          <span
+            className="map-scale-note is-alert"
+            data-testid="calls-status"
+            title={callsLiveError ? `Live refresh failed: ${callsLiveError}` : undefined}
+          >
             {incidentCountsState.calls > 0
-              ? `${incidentCountsState.calls} dispatched calls · published snapshot, newest ${ageInWords(feedSummary('calls').newest)}`
-              : (incidentIssue ?? 'Loading dispatched calls…')}
+              ? `${incidentCountsState.calls} dispatched calls · ${
+                  callsLive
+                    ? `City feed ${new Date(callsLive.at).toLocaleTimeString([], {
+                        hour: '2-digit',
+                        minute: '2-digit',
+                      })} · 10 min delay`
+                    : `offline snapshot, newest ${ageInWords(feedSummary('calls').newest)}`
+                }`
+              : (callsLiveError ?? incidentIssue ?? 'Loading dispatched calls…')}
           </span>
         )}
         {cases311On && (
@@ -766,6 +1320,30 @@ export function MapView({ views, onOpenLayers }: MapViewProps) {
             {incidentCountsState.cases311 > 0
               ? `${incidentCountsState.cases311} 311 cases · published snapshot, newest ${ageInWords(feedSummary('cases311').newest)}`
               : (incidentIssue ?? 'Loading 311 cases…')}
+          </span>
+        )}
+        {registryOn && (
+          <span className="map-scale-note" data-testid="registry-status">
+            {registryState.loaded > 0
+              ? `${registryState.loaded.toLocaleString()} parcel dossiers · City records, not field checks`
+              : (registryState.error ?? 'Loading building registry…')}
+          </span>
+        )}
+        {coverageOn && (
+          <span
+            className={`map-scale-note ${!mapillaryToken || coverageIssue ? 'is-warn' : ''}`}
+            data-testid="coverage-status"
+            title={
+              !mapillaryToken
+                ? 'Open Street-level imagery to save a Mapillary client token.'
+                : (coverageIssue ?? 'Coverage is crowd-sourced and may be incomplete or old.')
+            }
+          >
+            {!mapillaryToken
+              ? 'Mapillary coverage: add a token in Street-level imagery'
+              : coverageIssue
+                ? 'Mapillary coverage unavailable'
+                : 'Mapillary coverage · crowd-sourced, may be incomplete'}
           </span>
         )}
         {state.route.picking && (
@@ -776,7 +1354,33 @@ export function MapView({ views, onOpenLayers }: MapViewProps) {
             </button>
           </span>
         )}
+        {missingPlacePicking && (
+          <span className="picking-chip" role="status">
+            Tap the map where the missing place is
+            <button type="button" onClick={() => setMissingPlacePicking(false)}>
+              Cancel
+            </button>
+          </span>
+        )}
       </div>
+
+      {minimapOpen && (
+        <div className="minimap" role="group" aria-label="Overview minimap">
+          <div ref={minimapContainerRef} className="minimap-canvas" />
+          <span className="minimap-label">Overview</span>
+        </div>
+      )}
+
+      {streetOpen && (
+        <StreetPanel
+          center={streetCenter}
+          onClose={() => setStreetOpen(false)}
+          onCenter={(coordinates) => {
+            const map = mapRef.current;
+            map?.easeTo({ center: coordinates, zoom: Math.max(map.getZoom(), 17), duration: 600 });
+          }}
+        />
+      )}
 
       <div className="map-controls" aria-label="Map controls">
         <button
@@ -800,10 +1404,15 @@ export function MapView({ views, onOpenLayers }: MapViewProps) {
         </button>
         <button
           type="button"
-          className="map-control"
-          onClick={() => void actions.useCurrentLocation()}
-          aria-label="Use current location"
-          title="Use current location"
+          className={`map-control ${state.gpsLocked ? 'is-active' : ''}`}
+          onClick={actions.toggleGpsLock}
+          aria-pressed={state.gpsLocked}
+          aria-label={state.gpsLocked ? 'Stop GPS lock' : 'Lock map to my GPS location'}
+          title={
+            state.gpsLocked
+              ? 'GPS locked: the map follows this device. Drag the map or press again to release.'
+              : 'Lock the map to this device and follow live GPS fixes'
+          }
         >
           <CrosshairIcon />
         </button>
@@ -826,6 +1435,49 @@ export function MapView({ views, onOpenLayers }: MapViewProps) {
         >
           <LegendIcon />
         </button>
+        <button
+          type="button"
+          className={`map-control ${streetOpen ? 'is-active' : ''}`}
+          onClick={openStreetImagery}
+          aria-pressed={streetOpen}
+          aria-label="Street-level imagery"
+          title="Mapillary street-level photos near the selected place, building or map centre"
+        >
+          <svg viewBox="0 0 24 24" className="path-icon" width="19" height="19" aria-hidden="true">
+            <rect x="3" y="7" width="18" height="12.5" rx="2" />
+            <circle cx="12" cy="13.2" r="3.4" />
+            <path d="m8.5 7 1.3-2.2h4.4L15.5 7" />
+          </svg>
+        </button>
+        <button
+          type="button"
+          className={`map-control ${missingPlacePicking ? 'is-active' : ''}`}
+          onClick={() => {
+            actions.setPicking(null);
+            setMissingPlacePicking((picking) => !picking);
+          }}
+          aria-pressed={missingPlacePicking}
+          aria-label="Add a missing place"
+          title="Add a missing place at a map point"
+        >
+          <svg viewBox="0 0 24 24" className="path-icon" width="19" height="19" aria-hidden="true">
+            <path d="M12 21s7-5.9 7-12a7 7 0 1 0-14 0c0 6.1 7 12 7 12Z" />
+            <path d="M12 6.5v6M9 9.5h6" />
+          </svg>
+        </button>
+        <button
+          type="button"
+          className={`map-control ${minimapOpen ? 'is-active' : ''}`}
+          onClick={() => setMinimapOpen((open) => !open)}
+          aria-pressed={minimapOpen}
+          aria-label="Overview minimap"
+          title="Toggle the overview minimap"
+        >
+          <svg viewBox="0 0 24 24" className="path-icon" width="19" height="19" aria-hidden="true">
+            <rect x="3.5" y="4.5" width="17" height="15" rx="2" />
+            <path d="M3.5 9.5h17M9 4.5v15" />
+          </svg>
+        </button>
         <div className="map-control-group">
           <button type="button" className="map-control" onClick={() => mapRef.current?.zoomIn()} aria-label="Zoom in">
             +
@@ -836,9 +1488,14 @@ export function MapView({ views, onOpenLayers }: MapViewProps) {
         </div>
       </div>
 
-      <button type="button" className="map-recenter" onClick={recenter}>
+      <button
+        type="button"
+        className={`map-recenter ${state.gpsLocked ? 'is-active' : ''}`}
+        onClick={recenter}
+        aria-pressed={state.gpsLocked}
+      >
         <CrosshairIcon />
-        <span>Recenter</span>
+        <span>{state.gpsLocked ? 'GPS locked' : 'Recenter'}</span>
       </button>
 
       {legendOpen && (
@@ -870,13 +1527,19 @@ export function MapView({ views, onOpenLayers }: MapViewProps) {
               <span>Your field note</span>
             </li>
             <li>
+              <span className="legend-shape legend-abandoned" />
+              <span>Abandoned building · City record</span>
+            </li>
+            <li>
               <span className="legend-shape legend-stop" />
               <span>Muni stop</span>
             </li>
-            <li>
-              <span className="legend-shape legend-history" />
-              <span>Historic feature</span>
-            </li>
+            {coverageOn && (
+              <li>
+                <span className="legend-shape legend-coverage" />
+                <span>Mapillary photo coverage</span>
+              </li>
+            )}
             {callsOn && (
               <li>
                 <span className="legend-shape legend-call" />
@@ -895,10 +1558,9 @@ export function MapView({ views, onOpenLayers }: MapViewProps) {
               <h4>About reported activity</h4>
               <ul>
                 <li>
-                  These are published City records, not a live feed. Dispatched calls come from the City’s
-                  real-time CAD extract, which only publishes calls that have already closed, treats the City’s
-                  withheld sensitive calls as absent, and places each record at an intersection or block rather
-                  than a door.
+                  Dispatched calls refresh every two minutes from the City’s CAD extract, which is itself delayed ten
+                  minutes and only publishes calls that have closed. It withholds sensitive calls, and every record is
+                  placed at an intersection or block, not a door. This is not live 911 and carries no audio.
                 </li>
                 <li>
                   311 cases come from the nightly service-request dataset and are often already resolved by the
@@ -908,6 +1570,18 @@ export function MapView({ views, onOpenLayers }: MapViewProps) {
                   Categories that describe a person — encampments, welfare checks, medical and crisis calls, and
                   anything else about someone’s body, housing or state of mind — are removed before the file is
                   written, as are addresses, narratives and notes. Around 40 m of position is all that is kept.
+                </li>
+              </ul>
+            </div>
+          )}
+          {coverageOn && (
+            <div className="legend-3d">
+              <h4>About photo coverage</h4>
+              <ul>
+                <li>
+                  Lines and dots show where Mapillary contributors have uploaded street-level photos. Coverage is
+                  crowd-sourced, incomplete and sometimes years old; an empty street here is not evidence that no
+                  photo exists. Photos are © Mapillary contributors, CC BY-SA.
                 </li>
               </ul>
             </div>

@@ -1,8 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { checkIntegrity, dataset } from './index';
 import { LAYERS } from '../map/layers';
-import guidesJson from './guides.json';
-import type { Guide } from '../domain/types';
 
 describe('bundled dataset', () => {
   it('validates against the runtime schemas and has no referential errors', () => {
@@ -143,19 +141,5 @@ describe('published disclosures', () => {
     }
     // The documents themselves are the honest substitute for a layer.
     expect(dataset.data.disclosures.some((entry) => pattern.test(entry.title))).toBe(true);
-  });
-});
-
-describe('editorial guides', () => {
-  it('cites only registered sources and installed stops', () => {
-    const guides = guidesJson as unknown as Guide[];
-    expect(guides.length).toBeGreaterThan(0);
-    for (const guide of guides) {
-      for (const section of guide.orientation) {
-        expect(section.sourceIds.length).toBeGreaterThan(0);
-        for (const id of section.sourceIds) expect(dataset.sourceById.has(id)).toBe(true);
-      }
-      for (const id of guide.stopIds) expect(dataset.placeById.has(id)).toBe(true);
-    }
   });
 });

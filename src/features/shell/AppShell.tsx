@@ -1,27 +1,32 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
-import { MapView } from '../../map/MapView';
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { MapView, type MapLiveCounts } from '../../map/MapView';
 import { dataset } from '../../data';
 import { useStore } from '../../state/store';
-import { filteredViews, historyViews } from '../../state/selectors';
+import { filteredViews } from '../../state/selectors';
 import { PlaceInspector, CompareTray } from '../place/PlaceInspector';
 import { NearbyList, SearchBar } from '../discovery/Discovery';
+import { BuildingsWorkspace } from '../buildings/BuildingsWorkspace';
+import { BuildingDossier } from '../buildings/BuildingDossier';
 import { RoutePanel } from '../routing/RoutePanel';
 import { FieldnotesWorkspace } from '../fieldnotes/FieldnotesWorkspace';
-import { AtlasWorkspace } from '../atlas/AtlasWorkspace';
+import { LibraryWorkspace } from '../library/LibraryWorkspace';
 import { FeedsWorkspace } from '../feeds/FeedsWorkspace';
 import { ReviewWorkspace } from '../review/ReviewWorkspace';
 import { LayerDrawer } from '../layers/LayerDrawer';
 import { SettingsPanel } from '../settings/SettingsPanel';
+import { MapTargetsPanel } from './MapTargetsPanel';
 import { FieldnoteComposer, type ComposeTarget } from '../fieldnotes/FieldnoteComposer';
+import { MissingPlaceComposer } from '../fieldnotes/MissingPlaceComposer';
 import { PathIcon, useDesktop, useOnline } from '../ui';
 import { formatDate } from '../../domain/status';
 import { isOpenReport } from '../../domain/verification';
 
 const WORKSPACES = [
   { id: 'nearby', label: 'Nearby', icon: 'M12 3.5 20 12l-8 8.5L4 12z' },
+  { id: 'buildings', label: 'Buildings', icon: 'M4 21V7l8-4 8 4v14M9 21v-6h6v6M4 21h16' },
   { id: 'fieldnotes', label: 'Field map', icon: 'M5 3.5h11l3 3v14H5zM8.5 11h7M8.5 15h5' },
   { id: 'routes', label: 'Routes', icon: 'M5 19 19 5M11 5h8v8' },
-  { id: 'atlas', label: 'Atlas', icon: 'M3.5 21h17M6 21V10M12 21V10M18 21V10M3 10h18L12 3.5 3 10Z' },
+  { id: 'library', label: 'Library', icon: 'M4 4.5h5v15H4zM10.5 4.5h9v15h-9zM13 8h3.5M13 11h3.5M13 14h3.5' },
   { id: 'review', label: 'Review', icon: 'M6.5 4.5h11v15h-11zM9 8.5h6M9 12h6M9 15.5h3.5' },
 ] as const;
 
@@ -35,6 +40,9 @@ const FEED_TABS = [
   { id: 'cctv', label: 'CCTV', icon: 'M3.5 7h10.5v10H3.5zM14 11l6.5-3.4v8.8L14 13' },
   { id: 'radio', label: 'Radio', icon: 'M4 9.5h16v9.5H4zM7 13.6h.01M10.6 13.6h.01M14.4 13.6h3.2M8.5 6.6 16.5 3.4' },
 ] as const;
+
+/** Every destination in the bottom menu, in order. */
+const NAV_ITEMS = [...WORKSPACES, ...FEED_TABS];
 
 type WorkspaceId = (typeof WORKSPACES)[number]['id'];
 type NavId = WorkspaceId | (typeof FEED_TABS)[number]['id'];
@@ -54,29 +62,36 @@ export function AppShell() {
   const online = useOnline();
   const [layersOpen, setLayersOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const [railPopover, setRailPopover] = useState<{
+    kind: 'layers' | 'settings' | 'targets';
+    top: number;
+    maxHeight: number;
+    caretTop: number;
+  } | null>(null);
+  const [targetsOpen, setTargetsOpen] = useState(false);
   const [searchOpen, setSearchOpen] = useState(false);
   const [composeTarget, setComposeTarget] = useState<ComposeTarget | null>(null);
-  const [leftWidth, setLeftWidth] = useState(372);
-  const [rightWidth, setRightWidth] = useState(408);
+  const [missingPlacePoint, setMissingPlacePoint] = useState<[number, number] | null>(null);
   const [paletteOpen, setPaletteOpen] = useState(false);
   const [paletteQuery, setPaletteQuery] = useState('');
   const [sheetDrag, setSheetDrag] = useState<{ startY: number; startHeight: number } | null>(null);
   const [dragHeight, setDragHeight] = useState<number | null>(null);
+  const [liveCounts, setLiveCounts] = useState<MapLiveCounts>({ calls: 0, cases311: 0, registry: 0, abandoned: 0 });
   const dragRef = useRef<{ startY: number; startHeight: number; currentHeight: number } | null>(null);
+  const layersButtonRef = useRef<HTMLButtonElement | null>(null);
+  const targetsButtonRef = useRef<HTMLButtonElement | null>(null);
+  const settingsButtonRef = useRef<HTMLButtonElement | null>(null);
 
-  const views = useMemo(
-    () => [...filteredViews(state, dataset), ...historyViews(state, dataset)],
-    [state],
-  );
+  const views = useMemo(() => filteredViews(state, dataset), [state]);
   const selectedPlace = state.selectedPlaceId
     ? dataset.placeById.get(state.selectedPlaceId) ?? (state.selectedPlaceId.startsWith('private:')
         ? (() => {
             const observation = state.observations.find((item) => `private:${item.id}` === state.selectedPlaceId);
             if (!observation?.geometry) return null;
-            const category = observation.type === 'passage_discovery' ? 'passage'
+            const category = observation.suggestedCategory ?? (observation.type === 'passage_discovery' ? 'passage'
               : observation.type === 'popos_observation' ? 'popos'
                 : observation.type === 'entrance_observation' || observation.type === 'stairs_ramp_observation' ? 'pedestrian_connection'
-                  : observation.type === 'research_lead' ? 'research_lead' : 'urban_clue';
+                  : 'services');
             return {
               id: state.selectedPlaceId,
               name: observation.placeName ?? 'Private field observation',
@@ -124,26 +139,6 @@ export function AppShell() {
     });
   };
 
-  // Desktop resizing
-  const startResize = (side: 'left' | 'right', event: React.PointerEvent) => {
-    event.preventDefault();
-    const startX = event.clientX;
-    const start = side === 'left' ? leftWidth : rightWidth;
-    const onMove = (e: PointerEvent) => {
-      const delta = side === 'left' ? e.clientX - startX : startX - e.clientX;
-      if (side === 'left') setLeftWidth(Math.min(560, Math.max(300, start + delta)));
-      else setRightWidth(Math.min(620, Math.max(320, start + delta)));
-    };
-    const onUp = () => {
-      window.removeEventListener('pointermove', onMove);
-      window.removeEventListener('pointerup', onUp);
-      document.body.classList.remove('is-resizing');
-    };
-    document.body.classList.add('is-resizing');
-    window.addEventListener('pointermove', onMove);
-    window.addEventListener('pointerup', onUp);
-  };
-
   // Command palette
   useEffect(() => {
     if (!desktop) return;
@@ -156,6 +151,7 @@ export function AppShell() {
         setPaletteOpen(false);
         setLayersOpen(false);
         setSettingsOpen(false);
+        setTargetsOpen(false);
         setSearchOpen(false);
       } else if (!isTyping && event.key === '/') {
         event.preventDefault();
@@ -164,6 +160,58 @@ export function AppShell() {
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
+  }, [desktop]);
+
+  // Layers and Settings are popovers, not drawers: keep each one aligned with
+  // the rail button that opened it and flip above the button when the space
+  // below is too cramped for a useful panel.
+  useLayoutEffect(() => {
+    if (!desktop || (!layersOpen && !settingsOpen && !targetsOpen)) return;
+    const kind = layersOpen ? 'layers' : targetsOpen ? 'targets' : 'settings';
+    const button =
+      kind === 'layers'
+        ? layersButtonRef.current
+        : kind === 'targets'
+          ? targetsButtonRef.current
+          : settingsButtonRef.current;
+    if (!button) return;
+
+    const place = () => {
+      const rect = button.getBoundingClientRect();
+      const viewport = window.innerHeight;
+      const below = viewport - rect.top - 96;
+      const above = rect.bottom - 12;
+      const cap = Math.round(viewport * 0.6);
+      let maxHeight = Math.min(cap, below);
+      let top = rect.top;
+      if (maxHeight < 300 && above > maxHeight) {
+        maxHeight = Math.min(cap, above);
+        top = rect.bottom - maxHeight;
+      }
+      const buttonCenter = rect.top + rect.height / 2;
+      const caretTop = Math.max(18, Math.min(maxHeight - 18, buttonCenter - top));
+      setRailPopover({ kind, top, maxHeight, caretTop });
+    };
+
+    place();
+    window.addEventListener('resize', place);
+    return () => window.removeEventListener('resize', place);
+  }, [desktop, layersOpen, settingsOpen, targetsOpen]);
+
+  // Side flyouts close on an outside click, but not while the rail itself is
+  // being used to switch panels.
+  useEffect(() => {
+    if (!desktop) return;
+    const onDown = (event: MouseEvent) => {
+      const target = event.target as HTMLElement | null;
+      if (target?.closest('.side-popover, .float-search-card, .side-rail')) return;
+      setLayersOpen(false);
+      setSettingsOpen(false);
+      setTargetsOpen(false);
+      setSearchOpen(false);
+    };
+    document.addEventListener('mousedown', onDown);
+    return () => document.removeEventListener('mousedown', onDown);
   }, [desktop]);
 
   const sheetHeights = {
@@ -208,12 +256,14 @@ export function AppShell() {
         return <FeedsWorkspace kind="cctv" />;
       case 'radio':
         return <FeedsWorkspace kind="radio" />;
+      case 'buildings':
+        return <BuildingsWorkspace />;
       case 'routes':
         return <RoutePanel />;
       case 'fieldnotes':
         return <FieldnotesWorkspace />;
-      case 'atlas':
-        return <AtlasWorkspace />;
+      case 'library':
+        return <LibraryWorkspace />;
       case 'review':
         return <ReviewWorkspace />;
       case 'nearby':
@@ -223,13 +273,15 @@ export function AppShell() {
     }
   };
 
-  const coverageChip = (
-    <span className="coverage-chip" title={dataset.data.meta.footprint.note}>
-      {dataset.data.meta.footprint.name}
-      <span className="coverage-dot" aria-hidden="true" />
-      {dataset.data.meta.counts.places} records
-    </span>
-  );
+  const activeWorkspaceLabel = NAV_ITEMS.find((item) => item.id === state.workspace)?.label ?? 'Map';
+  const mobileCanClose = state.workspace !== 'map' || Boolean(selectedPlace) || Boolean(state.selectedBuildingId);
+
+  const closeMobilePanels = () => {
+    actions.selectPlace(null);
+    actions.selectBuilding(null);
+    actions.setWorkspace('map');
+    actions.setSheet('collapsed');
+  };
 
   const offlineBar = !online && (
     <div className="offline-bar" role="status">
@@ -243,93 +295,194 @@ export function AppShell() {
 
   if (desktop) {
     return (
-      <div className="app app-desktop">
-        <header className="topbar">
-          <div className="brand">
-            <svg viewBox="0 0 32 32" aria-hidden="true" className="brand-mark">
+      <div
+        className={`app app-desktop ${state.workspace !== 'map' ? 'has-panel' : ''} ${
+          selectedPlace || state.selectedBuildingId ? 'has-inspector' : ''
+        } ${layersOpen || settingsOpen || targetsOpen || searchOpen ? 'has-flyout' : ''}`}
+      >
+        <aside className="side-rail" aria-label="Map tools">
+          <span className="rail-mark" aria-hidden="true">
+            <svg viewBox="0 0 32 32" className="brand-mark">
               <path d="M16 3.5 27 16 16 28.5 5 16Z" />
               <circle cx="16" cy="16" r="3.2" />
             </svg>
-            <div>
-              <span className="brand-name">Night Map</span>
-              <span className="brand-sub">San Francisco after dark</span>
-            </div>
-          </div>
-          {coverageChip}
-          <span className="topbar-note">Field release · central SF · no account</span>
-          <div className="topbar-actions">
-            <button type="button" className="button ghost small" onClick={() => setPaletteOpen(true)}>
-              Command <kbd>⌘K</kbd>
-            </button>
-            <button type="button" className="button ghost small" onClick={() => setLayersOpen(true)}>
-              Layers
-            </button>
-            <button type="button" className="button ghost small" onClick={() => setSettingsOpen(true)}>
-              Settings
-            </button>
-            <span className={`connection ${online ? 'is-online' : 'is-offline'}`}>
-              {online ? 'Online' : 'Offline'}
-            </span>
-          </div>
-        </header>
-        {offlineBar}
-        <div className="desk" style={{ gridTemplateColumns: `${leftWidth}px 6px 1fr 6px ${rightWidth}px` }}>
-          <aside className="pane pane-left" aria-label="Discovery workspace">
-            <div className="pane-search">
-              <SearchBar />
-            </div>
-            <nav className="workspace-tabs" aria-label="Workspaces">
-              {WORKSPACES.map((workspace) => (
-                <button
-                  key={workspace.id}
-                  type="button"
-                  className={state.workspace === workspace.id ? 'is-active' : ''}
-                  aria-current={state.workspace === workspace.id ? 'page' : undefined}
-                  onClick={() => actions.setWorkspace(workspace.id)}
-                >
-                  {workspace.label}
-                  {workspace.id === 'review' && openReportCount > 0 && (
-                    <span className="nav-badge" aria-hidden="true" title={`${openReportCount} open`}>
-                      {openReportCount}
-                    </span>
-                  )}
-                </button>
-              ))}
-            </nav>
-            <div className="pane-scroll">{workspaceContent()}</div>
-            <footer className="pane-foot">
-              <span>{dataset.data.meta.counts.resources} resource records</span>
-              <button type="button" className="link-button" onClick={() => actions.setWorkspace('atlas')}>
-                Sources
+          </span>
+          <button
+            type="button"
+            className={`rail-button ${searchOpen ? 'is-active' : ''}`}
+            onClick={() => {
+              setSearchOpen((open) => !open);
+              setLayersOpen(false);
+              setSettingsOpen(false);
+              setTargetsOpen(false);
+            }}
+            aria-label="Search"
+            aria-expanded={searchOpen}
+            title="Search records, streets and stops"
+          >
+            <svg viewBox="0 0 24 24" className="path-icon" width="19" height="19" aria-hidden="true">
+              <circle cx="10.5" cy="10.5" r="6.2" />
+              <path d="m15 15 5 5" />
+            </svg>
+            <span>Search</span>
+          </button>
+          <button
+            type="button"
+            className="rail-button"
+            onClick={() => setPaletteOpen(true)}
+            aria-label="Command palette"
+            title="Command palette (⌘K)"
+          >
+            <svg viewBox="0 0 24 24" className="path-icon" width="19" height="19" aria-hidden="true">
+              <rect x="3.5" y="5" width="17" height="14" rx="2" />
+              <path d="m7.5 10 2 2-2 2M12.5 14.5h4" />
+            </svg>
+            <span>Command</span>
+          </button>
+          <button
+            ref={layersButtonRef}
+            type="button"
+            className={`rail-button ${layersOpen ? 'is-active' : ''}`}
+            onClick={() => {
+              setLayersOpen((open) => !open);
+              setSettingsOpen(false);
+              setTargetsOpen(false);
+              setSearchOpen(false);
+            }}
+            aria-label="Map layers"
+            aria-expanded={layersOpen}
+            title="Map layers"
+          >
+            <svg viewBox="0 0 24 24" className="path-icon" width="19" height="19" aria-hidden="true">
+              <path d="M12 3.5 21 8l-9 4.5L3 8l9-4.5ZM3 12.5 12 17l9-4.5M3 16.5 12 21l9-4.5" />
+            </svg>
+            <span>Layers</span>
+          </button>
+          <button
+            ref={targetsButtonRef}
+            type="button"
+            className={`rail-button ${targetsOpen ? 'is-active' : ''}`}
+            onClick={() => {
+              setTargetsOpen((open) => !open);
+              setLayersOpen(false);
+              setSettingsOpen(false);
+              setSearchOpen(false);
+            }}
+            aria-label="Targets on the map"
+            aria-expanded={targetsOpen}
+            title="What is on the map and what can be tapped"
+          >
+            <svg viewBox="0 0 24 24" className="path-icon" width="19" height="19" aria-hidden="true">
+              <path d="M8.5 6.5h12M8.5 12h12M8.5 17.5h12M3.5 6.5h.01M3.5 12h.01M3.5 17.5h.01" />
+            </svg>
+            <span>Targets</span>
+          </button>
+          <button
+            ref={settingsButtonRef}
+            type="button"
+            className={`rail-button ${settingsOpen ? 'is-active' : ''}`}
+            onClick={() => {
+              setSettingsOpen((open) => !open);
+              setLayersOpen(false);
+              setTargetsOpen(false);
+              setSearchOpen(false);
+            }}
+            aria-label="Settings and privacy"
+            aria-expanded={settingsOpen}
+            title="Settings and privacy"
+          >
+            <svg viewBox="0 0 24 24" className="path-icon" width="19" height="19" aria-hidden="true">
+              <circle cx="12" cy="12" r="3" />
+              <path d="M12 2.8v3M12 18.2v3M2.8 12h3M18.2 12h3M5.5 5.5l2.1 2.1M16.4 16.4l2.1 2.1M18.5 5.5l-2.1 2.1M7.6 16.4l-2.1 2.1" />
+            </svg>
+            <span>Settings</span>
+          </button>
+          <span
+            className={`rail-status ${online ? 'is-online' : 'is-offline'}`}
+            role="img"
+            aria-label={online ? 'Online: network requests work' : 'Offline: bundled records only'}
+            title={online ? 'Online · bundled records plus network requests' : 'Offline · bundled records and saved notes only'}
+          >
+            <span className="rail-status-dot" />
+            <span className="rail-status-label">{online ? 'Online' : 'Offline'}</span>
+          </span>
+        </aside>
+
+        {searchOpen && (
+          <div className="float-search-card" role="dialog" aria-label="Search">
+            <div className="float-search-card-head">
+              <SearchBar autoFocus onNavigate={() => setSearchOpen(false)} />
+              <button
+                type="button"
+                className="icon-button close"
+                onClick={() => setSearchOpen(false)}
+                aria-label="Close search"
+              >
+                ×
               </button>
-            </footer>
+            </div>
+          </div>
+        )}
+        {offlineBar}
+        <main className="map-full">
+          <MapView
+            views={views}
+            onLiveCountsChange={setLiveCounts}
+            onAddMissingPlace={setMissingPlacePoint}
+            onOpenLayers={() => {
+              setLayersOpen(true);
+              setSettingsOpen(false);
+              setTargetsOpen(false);
+              setSearchOpen(false);
+            }}
+          />
+        </main>
+
+        {state.workspace !== 'map' && (
+          <aside className="float-panel panel-left" aria-label="Workspace">
+            <header className="float-panel-head">
+              <span className="eyebrow">
+                {NAV_ITEMS.find((item) => item.id === state.workspace)?.label ?? 'Workspace'}
+              </span>
+              <button
+                type="button"
+                className="icon-button close"
+                onClick={() => actions.setWorkspace('map')}
+                aria-label="Close workspace"
+              >
+                ×
+              </button>
+            </header>
+            <div className="float-panel-body">{workspaceContent()}</div>
           </aside>
+        )}
 
-          <div
-            className="splitter"
-            role="separator"
-            aria-orientation="vertical"
-            aria-label="Resize discovery pane"
-            onPointerDown={(e) => startResize('left', e)}
-            onDoubleClick={() => setLeftWidth(372)}
-          />
-
-          <main className="pane-map">
-            <MapView views={views} onOpenLayers={() => setLayersOpen(true)} />
-          </main>
-
-          <div
-            className="splitter"
-            role="separator"
-            aria-orientation="vertical"
-            aria-label="Resize details pane"
-            onPointerDown={(e) => startResize('right', e)}
-            onDoubleClick={() => setRightWidth(408)}
-          />
-
-          <aside className="pane pane-right" aria-label="Record inspector">
-            <div className="pane-scroll">
-              {selectedPlace ? (
+        {(selectedPlace || state.selectedBuildingId) && (
+          <aside className="float-panel panel-right" aria-label="Record inspector">
+            <div className="float-panel-body">
+              {state.workspace === 'buildings' ? (
+                state.selectedBuildingId ? (
+                  <BuildingDossier
+                    dossierId={state.selectedBuildingId}
+                    onBack={() => actions.selectBuilding(null)}
+                    onComposeCheck={setComposeTarget}
+                  />
+                ) : (
+                  <div className="inspector-empty">
+                    <p className="eyebrow">Building dossier</p>
+                    <h2>Select a parcel</h2>
+                    <p>
+                      The Buildings workspace lists parcels with a DBI complaint, notice or demolition record describing
+                      a vacant, abandoned or derelict condition. Choose a row to read its identification, evidence,
+                      records and chronology here.
+                    </p>
+                    <p className="notice">
+                      A dossier is a reading of City records, not a field check. No entry here states that a building is
+                      empty today.
+                    </p>
+                  </div>
+                )
+              ) : selectedPlace ? (
                 <>
                   <PlaceInspector
                     placeId={selectedPlace.id}
@@ -368,10 +521,100 @@ export function AppShell() {
               )}
             </div>
           </aside>
-        </div>
+        )}
 
-        {layersOpen && <Overlay side="right" onClose={() => setLayersOpen(false)}><LayerDrawer onClose={() => setLayersOpen(false)} /></Overlay>}
-        {settingsOpen && <Overlay side="right" onClose={() => setSettingsOpen(false)}><SettingsPanel onClose={() => setSettingsOpen(false)} /></Overlay>}
+        <nav className="bottom-bar" aria-label="Main menu">
+          <button
+            type="button"
+            className={state.workspace === 'map' && !selectedPlace && !state.selectedBuildingId ? 'is-active' : ''}
+            onClick={() => {
+              actions.selectPlace(null);
+              actions.selectBuilding(null);
+              actions.setWorkspace('map');
+            }}
+          >
+            <PathIcon path="M12 3.5 20 12l-8 8.5L4 12z" size={19} />
+            <span>Map</span>
+          </button>
+          {WORKSPACES.map((workspace) => (
+            <button
+              key={workspace.id}
+              type="button"
+              className={state.workspace === workspace.id ? 'is-active' : ''}
+              aria-current={state.workspace === workspace.id ? 'page' : undefined}
+              onClick={() => openWorkspace(workspace.id)}
+            >
+              <PathIcon path={workspace.icon} size={19} />
+              <span>{workspace.label}</span>
+              {workspace.id === 'review' && openReportCount > 0 && (
+                <span className="nav-badge" aria-hidden="true" title={`${openReportCount} open`}>
+                  {openReportCount}
+                </span>
+              )}
+            </button>
+          ))}
+          {FEED_TABS.map((tab) => (
+            <button
+              key={tab.id}
+              type="button"
+              className={state.workspace === tab.id ? 'is-active' : ''}
+              aria-current={state.workspace === tab.id ? 'page' : undefined}
+              onClick={() => openWorkspace(tab.id)}
+            >
+              <PathIcon path={tab.icon} size={19} />
+              <span>{tab.label}</span>
+            </button>
+          ))}
+        </nav>
+
+        {layersOpen && railPopover?.kind === 'layers' && (
+          <div
+            className="side-popover rail-popover"
+            role="dialog"
+            aria-label="Map layers"
+            style={
+              {
+                top: railPopover.top,
+                maxHeight: railPopover.maxHeight,
+                '--rail-caret-top': `${railPopover.caretTop}px`,
+              } as React.CSSProperties
+            }
+          >
+            <LayerDrawer onClose={() => setLayersOpen(false)} />
+          </div>
+        )}
+        {settingsOpen && railPopover?.kind === 'settings' && (
+          <div
+            className="side-popover rail-popover"
+            role="dialog"
+            aria-label="Settings"
+            style={
+              {
+                top: railPopover.top,
+                maxHeight: railPopover.maxHeight,
+                '--rail-caret-top': `${railPopover.caretTop}px`,
+              } as React.CSSProperties
+            }
+          >
+            <SettingsPanel onClose={() => setSettingsOpen(false)} />
+          </div>
+        )}
+        {targetsOpen && railPopover?.kind === 'targets' && (
+          <div
+            className="side-popover rail-popover"
+            role="dialog"
+            aria-label="Targets on the map"
+            style={
+              {
+                top: railPopover.top,
+                maxHeight: railPopover.maxHeight,
+                '--rail-caret-top': `${railPopover.caretTop}px`,
+              } as React.CSSProperties
+            }
+          >
+            <MapTargetsPanel onClose={() => setTargetsOpen(false)} liveCounts={liveCounts} />
+          </div>
+        )}
         {composeTarget && (
           <Overlay side="center" onClose={() => setComposeTarget(null)}>
             <div className="composer-shell">
@@ -380,6 +623,17 @@ export function AppShell() {
                 existing={composeTarget?.placeId?.startsWith('private:') ? state.observations.find((o) => `private:${o.id}` === composeTarget.placeId) : undefined}
                 onDone={() => setComposeTarget(null)}
                 onCancel={() => setComposeTarget(null)}
+              />
+            </div>
+          </Overlay>
+        )}
+        {missingPlacePoint && (
+          <Overlay side="center" onClose={() => setMissingPlacePoint(null)}>
+            <div className="composer-shell">
+              <MissingPlaceComposer
+                coordinates={missingPlacePoint}
+                onDone={() => setMissingPlacePoint(null)}
+                onCancel={() => setMissingPlacePoint(null)}
               />
             </div>
           </Overlay>
@@ -395,8 +649,17 @@ export function AppShell() {
             onCommand={(command) => {
               setPaletteOpen(false);
               setPaletteQuery('');
-              if (command === 'layers') setLayersOpen(true);
-              else if (command === 'settings') setSettingsOpen(true);
+              if (command === 'layers') {
+                setLayersOpen(true);
+                setSettingsOpen(false);
+                setTargetsOpen(false);
+                setSearchOpen(false);
+              } else if (command === 'settings') {
+                setSettingsOpen(true);
+                setLayersOpen(false);
+                setTargetsOpen(false);
+                setSearchOpen(false);
+              }
               else if (command === 'clear') actions.resetFilters();
               else if (command === 'export') void import('../../services/storage').then((m) => m.exportPersonalData());
               else if (command === 'compose') quickNote();
@@ -456,6 +719,20 @@ export function AppShell() {
           </button>
         </div>
         <div className="mobile-status">
+          <span className="mobile-workspace" role="status" aria-live="polite">
+            <span className="eyebrow">Workspace</span>
+            <strong>{activeWorkspaceLabel}</strong>
+            {mobileCanClose && (
+              <button
+                type="button"
+                className="mobile-workspace-close"
+                onClick={closeMobilePanels}
+                aria-label={`Close ${activeWorkspaceLabel} and return to the map`}
+              >
+                ×
+              </button>
+            )}
+          </span>
           {!online && <span className="offline-chip">Offline · saved data</span>}
           {online && <span className="online-chip">Field release · {dataset.data.meta.counts.places} records</span>}
           <span className="privacy-chip">No account · no tracking</span>
@@ -465,12 +742,16 @@ export function AppShell() {
       {offlineBar}
 
       <main className="mobile-map">
-        <MapView views={views} onOpenLayers={() => setLayersOpen(true)} />
+        <MapView
+          views={views}
+          onLiveCountsChange={setLiveCounts}
+          onAddMissingPlace={setMissingPlacePoint}
+          onOpenLayers={() => setLayersOpen(true)}
+        />
+        <button type="button" className="quick-note-fab" onClick={quickNote} aria-label="Quick field note">
+          <PathIcon path="M5 3.5h11l3 3v14H5zM8.5 11h7M8.5 15h5" size={22} />
+        </button>
       </main>
-
-      <button type="button" className="quick-note-fab" onClick={quickNote} aria-label="Quick field note">
-        <PathIcon path="M5 3.5h11l3 3v14H5zM8.5 11h7M8.5 15h5" size={22} />
-      </button>
 
       <section
         className={`sheet sheet-${state.sheet} ${sheetDrag ? 'is-dragging' : ''}`}
@@ -509,7 +790,13 @@ export function AppShell() {
           )}
         </div>
         <div className="sheet-scroll">
-          {selectedPlace && (state.workspace === 'map' || state.workspace === 'nearby') ? (
+          {state.workspace === 'buildings' && state.selectedBuildingId ? (
+            <BuildingDossier
+              dossierId={state.selectedBuildingId}
+              onBack={() => actions.selectBuilding(null)}
+              onComposeCheck={setComposeTarget}
+            />
+          ) : selectedPlace && (state.workspace === 'map' || state.workspace === 'nearby') ? (
             <PlaceInspector
               placeId={selectedPlace.id}
               onClose={() => {
@@ -576,6 +863,17 @@ export function AppShell() {
           </div>
         </Overlay>
       )}
+      {missingPlacePoint && (
+        <Overlay side="center" onClose={() => setMissingPlacePoint(null)}>
+          <div className="composer-shell">
+            <MissingPlaceComposer
+              coordinates={missingPlacePoint}
+              onDone={() => setMissingPlacePoint(null)}
+              onCancel={() => setMissingPlacePoint(null)}
+            />
+          </div>
+        </Overlay>
+      )}
       {layersOpen && <Overlay side="center" onClose={() => setLayersOpen(false)}><LayerDrawer onClose={() => setLayersOpen(false)} /></Overlay>}
       {settingsOpen && <Overlay side="center" onClose={() => setSettingsOpen(false)}><SettingsPanel onClose={() => setSettingsOpen(false)} /></Overlay>}
       <Toast />
@@ -627,7 +925,7 @@ function CommandPalette({
     { id: 'nearby', label: 'Go to Nearby' },
     { id: 'routes', label: 'Go to Routes' },
     { id: 'fieldnotes', label: 'Go to Fieldnotes' },
-    { id: 'atlas', label: 'Go to Atlas' },
+    { id: 'library', label: 'Go to Library' },
     { id: 'review', label: 'Go to Review' },
     { id: 'compose', label: 'New field note' },
     { id: 'layers', label: 'Open layers' },
@@ -638,6 +936,10 @@ function CommandPalette({
   return (
     <div className="overlay overlay-center" role="presentation" onMouseDown={(e) => e.target === e.currentTarget && onClose()}>
       <div className="palette" role="dialog" aria-label="Command palette">
+        <div className="palette-head">
+          <span className="eyebrow">Command</span>
+          <kbd>Esc</kbd>
+        </div>
         <input
           autoFocus
           value={query}
@@ -659,7 +961,7 @@ function CommandPalette({
           ))}
           {commands.length === 0 && <li className="muted small">No command matches.</li>}
         </ul>
-        <p className="muted small">Core functions stay available through visible controls. Esc closes.</p>
+        <p className="palette-foot muted small">Every command also lives on the side rail or in the bottom menu.</p>
       </div>
     </div>
   );

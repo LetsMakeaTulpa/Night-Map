@@ -28,7 +28,6 @@ const waterRows = await readJson(path.join(CACHE, 'sfgov-water-assets.json'));
 const muniRows = await readJson(path.join(CACHE, 'sfgov-muni-stops.json'));
 const poposRows = await readJson(path.join(CACHE, 'sfgov-popos.json'));
 const basePoints = await readJson(path.join(OUT, 'basemap', 'base-points.json'));
-const landmarks = await readJson(path.join(OUT, 'basemap', 'landmarks.json'));
 
 const sources = [
   {
@@ -93,22 +92,6 @@ const sources = [
     limitations:
       'Volunteer-mapped. Street topology, closures and paths may lag reality. The basemap is a snapshot served with the app, not a live tile service.',
     importMethod: 'Overpass API extract, simplified to about 1e-5 degrees, shipped as GeoJSON',
-  },
-  {
-    id: 'src:osm-landmarks',
-    name: 'OpenStreetMap historic features',
-    url: 'https://www.openstreetmap.org/copyright',
-    provider: 'OpenStreetMap contributors',
-    sourceType: 'open_map',
-    license: 'Open Data Commons Open Database License (ODbL) 1.0',
-    licenseUrl: 'https://opendatacommons.org/licenses/odbl/1-0/',
-    retrievedAt,
-    updateCadence: 'Community-maintained; this extract is a snapshot',
-    fields: ['name', 'historic type', 'coordinates'],
-    coverage: 'Named historic nodes and ways in the core footprint',
-    limitations:
-      'Names and locations only. No historical narrative, date or archival source is attached, so these markers are labelled as community-mapped and are not evidence.',
-    importMethod: 'Overpass API extract',
   },
   {
     id: 'src:osm-buildings',
@@ -877,32 +860,6 @@ for (const row of muniRows) {
   });
 }
 
-/* --------------------------------------------------------- historic features */
-
-const historicPlaces = landmarks.features
-  .filter((f) => f.properties?.name)
-  .map((f, index) => ({
-    id: `place:osm-historic:${index}:${f.geometry.coordinates[1].toFixed(5)},${f.geometry.coordinates[0].toFixed(5)}`,
-    name: f.properties.name,
-    category: 'history',
-    geometry: f.geometry,
-    address: null,
-    addressType: 'point',
-    description: `Historic feature mapped in OpenStreetMap as "${(f.properties.kind || 'historic').replace(/_/g, ' ')}". Location and name only — Night Map has not researched this site or attached an archival source.`,
-    accessibility: { status: 'not_documented', note: 'No accessibility information is available for this feature.' },
-    sourceIds: ['src:osm-landmarks'],
-    status: 'active',
-    locationPrecision: 'osm_node',
-    neighborhood: null,
-    createdAt: retrievedAt,
-    updatedAt: retrievedAt,
-    verificationOverride: {
-      status: 'community_mapped',
-      label: 'Community-mapped',
-      note: 'Contributed to OpenStreetMap; not reviewed by Night Map and not a historical claim.',
-    },
-  }));
-
 /* ------------------------------------------------------------ neighbourhoods */
 
 const neighbourhoods = basePoints.features
@@ -913,7 +870,7 @@ const neighbourhoods = basePoints.features
     geometry: f.geometry,
   }));
 
-const allPlaces = filteredPlaces.concat(historicPlaces);
+const allPlaces = filteredPlaces;
 const allResources = resources;
 
 await writeFile(path.join(OUT, 'sources.json'), JSON.stringify(sources, null, 1));
@@ -933,7 +890,6 @@ await writeFile(
       },
       counts: {
         places: allPlaces.length,
-        historicFeatures: historicPlaces.length,
         popos: poposSeen.size,
         resources: resources.length,
         transitStops: transit.length,
@@ -947,7 +903,7 @@ await writeFile(
   ),
 );
 
-console.log(`places: ${allPlaces.length} (incl. ${historicPlaces.length} historic features and ${poposSeen.size} POPOS)`);
+console.log(`places: ${allPlaces.length} (incl. ${poposSeen.size} POPOS)`);
 console.log(`resources: ${resources.length}`);
 console.log(`transit stops: ${transit.length}`);
 console.log(`neighbourhoods: ${neighbourhoods.length}`);

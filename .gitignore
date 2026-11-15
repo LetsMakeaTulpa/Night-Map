@@ -2,6 +2,11 @@ node_modules/
 dist/
 test-results/
 playwright-report/
+artifacts/
 scripts/.cache/
 *.log
 .DS_Store
+
+.env
+.env.local
+.env.*.local

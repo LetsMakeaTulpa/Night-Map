@@ -1,0 +1,149 @@
+name: Nightly data refresh
+
+# DataSF publishes 311 around 6am Pacific and DBI datasets overnight. Running at
+# 14:23 UTC lands at 06:23 PST / 07:23 PDT, after those publishes.
+#
+# Nightly is deliberately light: SF open data, the bundled dataset and incident
+# snapshots. The building registry is much heavier, so it refreshes on Sundays and
+# is carried into the nightly builds through the Actions cache.
+on:
+  schedule:
+    - cron: '23 14 * * *' # nightly, without the building registry
+    - cron: '23 15 * * 0' # Sunday, full refresh including the building registry
+  workflow_dispatch:
+    inputs:
+      include_registry:
+        description: Also refresh the building registry (slow)
+        type: boolean
+        default: false
+
+concurrency:
+  group: nightly-data
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  refresh:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    env:
+      FULL_REFRESH: ${{ github.event.schedule == '23 15 * * 0' || github.event.inputs.include_registry == 'true' }}
+    steps:
+      - name: Check out
+        uses: actions/checkout@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Install
+        run: npm ci
+
+      # The registry is generated, not committed. Restore the copy produced by
+      # the last Sunday run so the nightly build still ships it.
+      - name: Restore weekly building registry
+        if: env.FULL_REFRESH != 'true'
+        uses: actions/cache/restore@v4
+        with:
+          path: |
+            public/buildings/registry.json
+            src/data/building-registry-meta.json
+          key: building-registry-${{ github.run_id }}
+          restore-keys: |
+            building-registry-
+
+      - name: Refresh City-backed data
+        run: |
+          if [ "$FULL_REFRESH" = "true" ]; then
+            npm run data:refresh
+          else
+            npm run data:refresh -- --skip-registry
+          fi
+
+      # A cold cache (first night, or after eviction) must not publish a build
+      # without the registry. Build it once; the save step below seeds the cache.
+      - name: Bootstrap building registry if no weekly cache exists
+        id: registry_bootstrap
+        if: env.FULL_REFRESH != 'true'
+        run: |
+          if [ ! -s public/buildings/registry.json ]; then
+            echo "::warning title=Building registry cache cold::Running the full registry build once to seed the nightly cache."
+            node scripts/fetch-building-registry.mjs --refresh
+            echo "built=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "built=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Test
+        run: npm test
+
+      - name: Build
+        run: npm run build
+
+      # Cache only after the data has passed the tests and the production build.
+      - name: Cache building registry for nightly builds
+        if: env.FULL_REFRESH == 'true' || steps.registry_bootstrap.outputs.built == 'true'
+        uses: actions/cache/save@v4
+        with:
+          path: |
+            public/buildings/registry.json
+            src/data/building-registry-meta.json
+          key: building-registry-${{ github.run_id }}
+
+      # Keep the artifact even when the deploy fails, so a broken publish can be
+      # inspected without re-running the data refresh.
+      - name: Upload built site
+        uses: actions/upload-artifact@v4
+        with:
+          name: night-map-dist
+          path: dist
+          retention-days: 14
+
+      - name: Check Cloudflare credentials
+        id: cloudflare
+        env:
+          TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          ACCOUNT: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: |
+          if [ -n "$TOKEN" ] && [ -n "$ACCOUNT" ]; then
+            echo "ready=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "ready=false" >> "$GITHUB_OUTPUT"
+            echo "::warning title=Cloudflare Pages not configured::Add CLOUDFLARE_API_TOKEN and CLOUDFLARE_ACCOUNT_ID repository secrets to publish the nightly build."
+          fi
+
+      # A scheduled run is on the default branch (the Pages production branch).
+      # A manual run from another branch creates a preview deployment instead.
+      - name: Deploy to Cloudflare Pages
+        id: deploy
+        if: steps.cloudflare.outputs.ready == 'true'
+        uses: cloudflare/wrangler-action@v4
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          # The refreshed data is generated, not committed, so the checkout is
+          # intentionally dirty when Wrangler records the deployment.
+          command: pages deploy dist --project-name=${{ vars.CLOUDFLARE_PAGES_PROJECT || 'night-map' }} --branch=${{ github.ref_name }} --commit-dirty=true
+
+      - name: Summarize freshness
+        env:
+          PAGES_URL: ${{ steps.deploy.outputs.deployment-url }}
+          PAGES_ALIAS_URL: ${{ steps.deploy.outputs.pages-deployment-alias-url }}
+        run: |
+          echo "### Nightly data refresh" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          node -e "const m=require('./src/data/meta.json'); console.log('- Freshness: ' + m.generatedAt);" >> "$GITHUB_STEP_SUMMARY"
+          if [ -n "$PAGES_URL" ]; then
+            echo "- Deployed: [$PAGES_URL]($PAGES_URL)" >> "$GITHUB_STEP_SUMMARY"
+            if [ -n "$PAGES_ALIAS_URL" ] && [ "$PAGES_ALIAS_URL" != "$PAGES_URL" ]; then
+              echo "- Stable Pages URL: [$PAGES_ALIAS_URL]($PAGES_ALIAS_URL)" >> "$GITHUB_STEP_SUMMARY"
+            fi
+          else
+            echo "- Deployed: not published (Cloudflare credentials missing or deploy did not run)" >> "$GITHUB_STEP_SUMMARY"
+          fi
+          node -e "const m=require('./src/data/incidents-meta.json'); m.feeds.forEach(f=>console.log('- ' + f.id + ': ' + f.rows + ' rows, newest ' + (f.newest||'unknown')));" >> "$GITHUB_STEP_SUMMARY"
+          node -e "const m=require('./src/data/building-registry-meta.json'); console.log('- Building dossiers: ' + m.counts.dossiers + ', newest record ' + m.newestRecordAt);" >> "$GITHUB_STEP_SUMMARY"

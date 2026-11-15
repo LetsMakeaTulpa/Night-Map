@@ -6,8 +6,11 @@ import { activeFilterCount, filteredViews, nearbyViews } from '../../state/selec
 import { searchLocal, type SearchHit } from '../../services/search';
 import { geocodePhoton, GeocodeError } from '../../services/geocoding';
 import { formatDistance } from '../../domain/geo';
+import { freshCheckCount, isFreshCheck, latestPlaceChecks, SURVEY_CHECK_DAYS } from '../../domain/survey';
+import { formatDate } from '../../domain/status';
 import { EmptyState, EvidencePill, PathIcon, useOnline } from '../ui';
 import { CATEGORY_BY_ID } from '../../domain/categories';
+import { requestSurveyFlyTo } from '../../map/survey-flyto';
 
 export function SearchBar({ autoFocus = false, onNavigate }: { autoFocus?: boolean; onNavigate?: () => void }) {
   const { state, actions } = useStore();
@@ -264,8 +267,40 @@ export function NearbyList({ mode = 'nearby' }: { mode?: 'nearby' | 'results' })
   const views = useMemo(
     () => (mode === 'nearby' ? nearbyViews(state, dataset) : filteredViews(state, dataset)),
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [state.filters, state.reference, state.saved, state.layers.landmarks, mode],
+    [state.filters, state.reference, state.saved, mode],
   );
+  const [surveyMode, setSurveyMode] = useState(false);
+  const [lastCheck, setLastCheck] = useState<{ id: string; name: string } | null>(null);
+  const surveyRef = useRef<HTMLDivElement | null>(null);
+
+  useEffect(() => {
+    if (!surveyMode) return;
+    surveyRef.current?.scrollIntoView({ block: 'nearest' });
+  }, [surveyMode]);
+  const checks = useMemo(() => latestPlaceChecks(state.observations), [state.observations]);
+  const checkedCount = useMemo(
+    () => freshCheckCount(checks, views.map((view) => view.place.id)),
+    [checks, views],
+  );
+
+  const recordCheck = async (view: (typeof views)[number]) => {
+    const created = await actions.createObservation({
+      placeId: view.place.id,
+      placeName: view.place.name,
+      geometry: view.place.geometry.coordinates,
+      type: 'resource_present',
+      note: 'Confirmed on site during a nearby survey.',
+      observedAt: new Date().toISOString(),
+      photo: null,
+    });
+    setLastCheck({ id: created.id, name: view.place.name });
+  };
+
+  const undoCheck = async () => {
+    if (!lastCheck) return;
+    await actions.deleteObservation(lastCheck.id);
+    setLastCheck(null);
+  };
 
   return (
     <div className="nearby">
@@ -276,15 +311,49 @@ export function NearbyList({ mode = 'nearby' }: { mode?: 'nearby' | 'results' })
             {views.length} {views.length === 1 ? 'record' : 'records'}
           </h2>
         </div>
-        <div className="reference-pill">
-          <PathIcon path="M12 3.5 20 12l-8 8.5L4 12z" />
-          <span>{state.reference.label}</span>
-          <button type="button" onClick={() => void actions.useCurrentLocation()} aria-label="Use my location for distances">
-            Use mine
+        <div className="nearby-head-tools">
+          <button
+            type="button"
+            className={`button small ${surveyMode ? 'primary' : 'ghost'}`}
+            aria-pressed={surveyMode}
+            onClick={() => setSurveyMode((on) => !on)}
+          >
+            {surveyMode ? 'Done surveying' : 'Survey nearby'}
           </button>
+          <div className="reference-pill">
+            <PathIcon path="M12 3.5 20 12l-8 8.5L4 12z" />
+            <span>{state.reference.label}</span>
+            <button type="button" onClick={() => void actions.useCurrentLocation()} aria-label="Use my location for distances">
+              Use mine
+            </button>
+          </div>
         </div>
       </div>
       <FilterBar compact />
+      {surveyMode && (
+        <div className="survey-bar" ref={surveyRef}>
+          <div className="survey-bar-head">
+            <span>
+              <strong>
+                {checkedCount} of {views.length}
+              </strong>{' '}
+              checked within {SURVEY_CHECK_DAYS} days
+            </span>
+            {lastCheck && (
+              <button type="button" className="link-button" onClick={() => void undoCheck()}>
+                Undo last check
+              </button>
+            )}
+          </div>
+          <div className="survey-track" aria-hidden="true">
+            <span style={{ width: `${views.length ? Math.round((checkedCount / views.length) * 100) : 0}%` }} />
+          </div>
+          <p className="muted small">
+            A check records that you saw the place. It is private to this device, expires after two weeks, and never
+            changes the City or provider record.
+          </p>
+        </div>
+      )}
       {views.length === 0 ? (
         <EmptyState
           title="Nothing passes these conditions"
@@ -303,9 +372,23 @@ export function NearbyList({ mode = 'nearby' }: { mode?: 'nearby' | 'results' })
           {views.map((view) => {
             const def = CATEGORY_BY_ID.get(view.place.category);
             const selected = state.selectedPlaceId === view.place.id;
+            const checkedAt = checks.get(view.place.id);
+            const freshCheck = isFreshCheck(checkedAt);
             return (
               <li key={view.place.id} className={`nearby-row ${selected ? 'is-selected' : ''}`}>
-                <button type="button" className="nearby-main" onClick={() => actions.selectPlace(view.place.id)}>
+                <button
+                  type="button"
+                  className="nearby-main"
+                  onClick={() => {
+                    actions.selectPlace(view.place.id);
+                    if (surveyMode) {
+                      requestSurveyFlyTo({
+                        placeId: view.place.id,
+                        coordinates: view.place.geometry.coordinates,
+                      });
+                    }
+                  }}
+                >
                   <span className="nearby-mark" style={{ background: def?.color }}>
                     <svg viewBox="0 0 24 24" aria-hidden="true">
                       <path d={def?.icon} />
@@ -327,10 +410,21 @@ export function NearbyList({ mode = 'nearby' }: { mode?: 'nearby' | 'results' })
                   {view.place.category === 'popos' && /open at all times|accessible at all times/i.test(String(view.resource?.details.cityHours ?? '')) && <span className="tag free">City-listed all-hours</span>}
                       {view.resource?.cost?.kind === 'free' && <span className="tag free">Free</span>}
                       {view.isNearTransit && <span className="tag transit">Near Muni</span>}
+                      {freshCheck && checkedAt && <span className="tag survey">Checked {formatDate(checkedAt)}</span>}
                     </span>
                   </span>
                 </button>
                 <div className="nearby-actions">
+                  {surveyMode && (
+                    <button
+                      type="button"
+                      className={`button tiny ${freshCheck ? 'ghost' : 'primary'}`}
+                      disabled={freshCheck}
+                      onClick={() => void recordCheck(view)}
+                    >
+                      {freshCheck ? '✓ Checked' : 'Check here'}
+                    </button>
+                  )}
                   <button type="button" className="button primary tiny" onClick={() => actions.startRouteTo(view.place)}>
                     GO
                   </button>
@@ -364,7 +458,6 @@ export function NearbySummary() {
     state.filters,
     state.reference,
     state.saved,
-    state.layers.landmarks,
   ]);
   return (
     <div className="sheet-summary">

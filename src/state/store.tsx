@@ -9,6 +9,7 @@ import {
   type ReactNode,
 } from 'react';
 import type {
+  BuildingCondition,
   CategoryId,
   ChangeRecord,
   Collection,
@@ -91,6 +92,8 @@ export interface AppState {
   layerViews: LayerView[];
   selectedPlaceId: string | null;
   selectedStopId: string | null;
+  /** A parcel dossier from the on-demand building registry. */
+  selectedBuildingId: string | null;
   selectedExternal: { label: string; detail: string; coordinates: [number, number] } | null;
   saved: SavedPlace[];
   observations: Observation[];
@@ -105,6 +108,8 @@ export interface AppState {
   route: RouteState;
   compareIds: string[];
   userLocation: UserLocation | null;
+  /** Follow this device's GPS fix until the map is dragged or tracking is stopped. */
+  gpsLocked: boolean;
   reference: { coordinates: [number, number]; label: string };
   toast: Toast | null;
   sheet: 'collapsed' | 'peek' | 'expanded';
@@ -144,6 +149,7 @@ const initialState: AppState = {
   layerViews: [],
   selectedPlaceId: null,
   selectedStopId: null,
+  selectedBuildingId: null,
   selectedExternal: null,
   saved: [],
   observations: [],
@@ -165,6 +171,7 @@ const initialState: AppState = {
   },
   compareIds: [],
   userLocation: null,
+  gpsLocked: false,
   reference: { coordinates: SF_CENTER, label: 'Map centre' },
   toast: null,
   sheet: 'collapsed',
@@ -186,10 +193,14 @@ export interface ObservationInput {
   placeName: string | null;
   geometry: [number, number] | null;
   type: Observation['type'];
+  suggestedCategory?: Observation['suggestedCategory'];
   note: string;
   observedAt: string;
   photo: Observation['photo'];
   accessStatus?: NonNullable<Observation['accessStatus']>;
+  /** A building-registry parcel this check belongs to. */
+  buildingId?: string | null;
+  buildingCondition?: BuildingCondition;
   sourceReference?: string;
   confidence?: NonNullable<Observation['confidence']>;
 }
@@ -204,6 +215,7 @@ interface StoreValue {
     resetFilters: () => void;
     selectPlace: (id: string | null) => void;
     selectStop: (id: string | null) => void;
+    selectBuilding: (id: string | null) => void;
     selectExternal: (value: AppState['selectedExternal']) => void;
     setLayer: (id: string, visible: boolean) => void;
     setLayerOpacity: (id: string, opacity: number) => void;
@@ -237,6 +249,9 @@ interface StoreValue {
     setRouteOrigin: (stop: RouteStop | null) => void;
     setPicking: (value: 'origin' | 'stop' | null) => void;
     useCurrentLocation: () => Promise<void>;
+    startGpsLock: () => void;
+    stopGpsLock: () => void;
+    toggleGpsLock: () => void;
     planRoute: () => Promise<void>;
     clearRoute: () => void;
     saveCurrentRoute: (name: string) => Promise<void>;
@@ -256,6 +271,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const [state, setState] = useState<AppState>(initialState);
   const hydrated = useRef(false);
   const toastTimer = useRef<number | null>(null);
+  const locationWatch = useRef<number | null>(null);
+  const gpsFirstFix = useRef(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -294,6 +311,15 @@ export function AppProvider({ children }: { children: ReactNode }) {
     };
   }, []);
 
+  useEffect(
+    () => () => {
+      if (locationWatch.current !== null && typeof navigator !== 'undefined' && navigator.geolocation) {
+        navigator.geolocation.clearWatch(locationWatch.current);
+      }
+    },
+    [],
+  );
+
   const notify = useCallback((message: string, tone: Toast['tone'] = 'info') => {
     const toast = { id: toastSeq++, message, tone };
     setState((s) => ({ ...s, toast }));
@@ -309,6 +335,75 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
   const actions = useMemo<StoreValue['actions']>(() => {    const setFilter = (patch: Partial<Filters>) =>
       setState((s) => ({ ...s, filters: { ...s.filters, ...patch } }));
+
+    const applyGpsFix = (position: GeolocationPosition) => {
+      const location: UserLocation = {
+        coordinates: [position.coords.longitude, position.coords.latitude],
+        accuracy: position.coords.accuracy,
+        at: Date.now(),
+      };
+      setState((s) => ({
+        ...s,
+        userLocation: location,
+        gpsLocked: true,
+        reference: { coordinates: location.coordinates, label: 'Your live location' },
+        settings: { ...s.settings, locationPermission: 'granted' },
+      }));
+      if (gpsFirstFix.current) {
+        gpsFirstFix.current = false;
+        void saveSettings({ ...state.settings, locationPermission: 'granted' });
+        notify(`GPS lock on · ±${Math.round(location.accuracy)} m. The map will follow this device until you drag it.`, 'success');
+      }
+    };
+
+    const stopGpsLock = (announce = true) => {
+      if (locationWatch.current !== null && typeof navigator !== 'undefined' && navigator.geolocation) {
+        navigator.geolocation.clearWatch(locationWatch.current);
+        locationWatch.current = null;
+      }
+      gpsFirstFix.current = false;
+      setState((s) => (s.gpsLocked ? { ...s, gpsLocked: false } : s));
+      if (announce) notify('GPS lock off. The map stays where you leave it.');
+    };
+
+    const startGpsLock = () => {
+      if (typeof navigator === 'undefined' || !navigator.geolocation) {
+        notify('This browser does not expose location.', 'warn');
+        return;
+      }
+      if (!window.isSecureContext) {
+        notify('Location needs a secure (https or localhost) context.', 'warn');
+        return;
+      }
+      if (locationWatch.current !== null) return;
+      gpsFirstFix.current = true;
+      setState((s) => ({ ...s, gpsLocked: true }));
+      locationWatch.current = navigator.geolocation.watchPosition(
+        applyGpsFix,
+        (error) => {
+          if (locationWatch.current !== null) {
+            navigator.geolocation.clearWatch(locationWatch.current);
+            locationWatch.current = null;
+          }
+          gpsFirstFix.current = false;
+          setState((s) => ({
+            ...s,
+            gpsLocked: false,
+            settings: {
+              ...s.settings,
+              locationPermission: error.code === error.PERMISSION_DENIED ? 'denied' : s.settings.locationPermission,
+            },
+          }));
+          notify(
+            error.code === error.PERMISSION_DENIED
+              ? 'Location permission was denied. GPS lock is off.'
+              : 'Could not keep a GPS lock. The map is free to move.',
+            'warn',
+          );
+        },
+        { enableHighAccuracy: true, timeout: 15_000, maximumAge: 5_000 },
+      );
+    };
 
     return {
       setWorkspace: (workspace) => {
@@ -340,12 +435,36 @@ export function AppProvider({ children }: { children: ReactNode }) {
           ...s,
           selectedPlaceId: id,
           selectedStopId: null,
+          selectedBuildingId: null,
           selectedExternal: null,
           sheet: id ? 'peek' : s.sheet,
         })),
-      selectStop: (id) => setState((s) => ({ ...s, selectedStopId: id, selectedPlaceId: null, sheet: 'peek' })),
+      selectStop: (id) =>
+        setState((s) => ({
+          ...s,
+          selectedStopId: id,
+          selectedPlaceId: null,
+          selectedBuildingId: null,
+          sheet: 'peek',
+        })),
+      selectBuilding: (id) =>
+        setState((s) => ({
+          ...s,
+          selectedBuildingId: id,
+          selectedPlaceId: null,
+          selectedStopId: null,
+          selectedExternal: null,
+          workspace: id ? 'buildings' : s.workspace,
+          sheet: id ? 'expanded' : s.sheet,
+        })),
       selectExternal: (value) =>
-        setState((s) => ({ ...s, selectedExternal: value, selectedPlaceId: null, selectedStopId: null })),
+        setState((s) => ({
+          ...s,
+          selectedExternal: value,
+          selectedPlaceId: null,
+          selectedStopId: null,
+          selectedBuildingId: null,
+        })),
 
       setLayer: (id, visible) => setState((s) => ({ ...s, layers: { ...s.layers, [id]: visible } })),
       setLayerOpacity: (id, opacity) =>
@@ -375,7 +494,15 @@ export function AppProvider({ children }: { children: ReactNode }) {
               'calls-recent',
               'cases-311',
             ],
-            history: ['streets', 'street-labels', 'parks', 'landmarks', 'neighbourhoods'],
+            vacant: [
+              'streets',
+              'street-labels',
+              'parks',
+              'neighbourhoods',
+              'abandoned-buildings',
+              'building-registry',
+              'buildings-3d',
+            ],
           };
           const visibleIds = presets[preset] ?? [];
           const layers = Object.fromEntries(LAYERS.map((l) => [l.id, visibleIds.includes(l.id)]));
@@ -443,7 +570,10 @@ export function AppProvider({ children }: { children: ReactNode }) {
           placeName: input.placeName,
           geometry: input.geometry ? { type: 'Point', coordinates: input.geometry } : null,
           type: input.type,
+          suggestedCategory: input.suggestedCategory,
           accessStatus: input.accessStatus ?? 'unknown',
+          buildingId: input.buildingId ?? null,
+          buildingCondition: input.buildingCondition,
           sourceReference: input.sourceReference?.trim() || undefined,
           confidence: input.confidence ?? 'unverified',
           note: input.note.trim(),
@@ -456,7 +586,14 @@ export function AppProvider({ children }: { children: ReactNode }) {
         };
         await writeOne('observations', observation);
         setState((s) => ({ ...s, observations: [observation, ...s.observations] }));
-        notify('Field note saved privately on this device.', 'success');
+        notify(
+          input.suggestedCategory
+            ? 'Missing-place lead saved privately. It does not create a public record or change City data.'
+            : input.buildingId
+              ? 'Condition check saved privately. It sits beside the City records on this device; it does not change them.'
+              : 'Field note saved privately on this device.',
+          'success',
+        );
         return observation;
       },
       updateObservation: async (observation) => {
@@ -818,6 +955,9 @@ export function AppProvider({ children }: { children: ReactNode }) {
       setRouteOrigin: (origin) =>
         updateRoute({ origin, plan: null, status: 'idle', error: null }),
       setPicking: (value) => updateRoute({ picking: value }),
+      startGpsLock,
+      stopGpsLock: () => stopGpsLock(),
+      toggleGpsLock: () => (state.gpsLocked ? stopGpsLock() : startGpsLock()),
 
       useCurrentLocation: async () => {
         if (typeof navigator === 'undefined' || !navigator.geolocation) {

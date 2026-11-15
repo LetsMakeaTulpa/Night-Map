@@ -165,17 +165,6 @@ export const CATEGORIES: CategoryDef[] = [
     serviceNote: null,
   },
   {
-    id: 'history',
-    label: 'Historic features',
-    short: 'History',
-    color: '#9C8F7D',
-    icon: 'M3.5 21h17M6 21V10M12 21V10M18 21V10M3 10h18L12 3.5 3 10Z',
-    description: 'Named historic features mapped by OpenStreetMap. Names and locations only — no researched narrative.',
-    layerGroup: 'context',
-    defaultVisible: false,
-    serviceNote: null,
-  },
-  {
     id: 'passage', label: 'Passages & cut-throughs', short: 'Passages', color: '#83C8A0',
     icon: 'M4 20V7l8-4 8 4v13M8 20v-7h8v7',
     description: 'Publicly intended pedestrian connections. Access is recorded per observation; unknown does not mean public.',
@@ -192,18 +181,6 @@ export const CATEGORIES: CategoryDef[] = [
     icon: 'M4 20h4v-4h4v-4h4V8h4',
     description: 'Pedestrian routes and vertical connections, with access and accessibility left unknown until observed.',
     layerGroup: 'resources', defaultVisible: false, serviceNote: 'No verified micromapped connections are installed yet.',
-  },
-  {
-    id: 'urban_clue', label: 'Architectural & urban clues', short: 'Clues', color: '#B69ACB',
-    icon: 'M4 20V8l8-5 8 5v12M8 20v-6h8v6',
-    description: 'Visible architectural details and historical clues. A clue or lead is not proof of an underground feature.',
-    layerGroup: 'resources', defaultVisible: false, serviceNote: 'No researched clue records are installed yet.',
-  },
-  {
-    id: 'research_lead', label: 'Research leads', short: 'Leads', color: '#D3A36B',
-    icon: 'M12 3v4m0 10v4M3 12h4m10 0h4M5.6 5.6l2.8 2.8m8.8 8.8 2.8 2.8m0-14.4-2.8 2.8m-8.8 8.8-2.8 2.8',
-    description: 'Unverified hypotheses with a stated rationale and evidence trail; never presented as confirmed places.',
-    layerGroup: 'resources', defaultVisible: false, serviceNote: 'No research leads are installed yet.',
   },
 ];
 

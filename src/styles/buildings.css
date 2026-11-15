@@ -1,0 +1,395 @@
+/* ------------------------------------------------------ building registry */
+
+.building-controls {
+  display: grid;
+  gap: 10px;
+  margin: 4px 0 10px;
+}
+
+.building-list {
+  display: grid;
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.building-row {
+  display: grid;
+  gap: 3px;
+  width: 100%;
+  padding: 11px 12px;
+  text-align: left;
+  color: var(--text);
+  background: #0e161a;
+  border: var(--border-w) solid var(--line);
+  border-radius: 10px;
+}
+
+.building-row:hover {
+  border-color: #3a4b54;
+}
+
+.building-row.is-selected {
+  border-color: var(--accent);
+}
+
+.building-row-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+  min-width: 0;
+}
+
+.building-row-head strong {
+  min-width: 0;
+  overflow: hidden;
+  font-size: 13.5px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.building-row-meta,
+.building-row-counts,
+.building-row-score {
+  font-size: 11.5px;
+  line-height: 1.45;
+  color: var(--muted);
+}
+
+.building-row-score {
+  color: var(--faint);
+}
+
+.building-status {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  padding: 2px 7px;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--status-color, var(--muted));
+  border: 1px solid currentColor;
+  border-radius: 999px;
+  white-space: nowrap;
+}
+
+.status-reported_vacant {
+  --status-color: #E0A458;
+}
+
+.status-vacancy_history {
+  --status-color: #B98A5A;
+}
+
+.status-under_demolition {
+  --status-color: #D96C4F;
+}
+
+.status-demolition_history {
+  --status-color: #9E7A5A;
+}
+
+.status-under_construction {
+  --status-color: #6E9AA8;
+}
+
+.status-code_enforcement {
+  --status-color: #C9B27A;
+}
+
+.status-records_only {
+  --status-color: #8A8F86;
+}
+
+.status-swatch {
+  display: inline-block;
+  width: 9px;
+  height: 9px;
+  margin-right: 6px;
+  background: var(--status-color, var(--muted));
+  border-radius: 50%;
+}
+
+.load-more {
+  margin-top: 12px;
+}
+
+.dossier-loading {
+  display: grid;
+  gap: 10px;
+  padding: 18px;
+  color: var(--text-2);
+  border: var(--border-w) solid var(--line);
+  border-radius: 10px;
+  background: #0e161a;
+}
+
+.loading-bar {
+  display: block;
+  height: 3px;
+  overflow: hidden;
+  background: #1b272d;
+  border-radius: 2px;
+}
+
+.loading-bar::after {
+  content: '';
+  display: block;
+  width: 40%;
+  height: 100%;
+  background: var(--accent);
+  animation: registry-load 1.2s ease-in-out infinite;
+}
+
+@keyframes registry-load {
+  0% {
+    transform: translateX(-100%);
+  }
+  100% {
+    transform: translateX(250%);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .loading-bar::after {
+    animation: none;
+    width: 100%;
+    opacity: 0.4;
+  }
+}
+
+/* ---------------------------------------------------------------- dossier */
+
+.dossier {
+  display: grid;
+  gap: 16px;
+  padding-bottom: 24px;
+}
+
+.dossier-head {
+  display: grid;
+  gap: 6px;
+}
+
+.dossier-head h2 {
+  font-size: 25px;
+  line-height: 1.15;
+}
+
+.dossier-badges {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+}
+
+.confidence {
+  font-size: 11px;
+  color: var(--muted);
+}
+
+.dossier-meta,
+.dossier-score,
+.record-section,
+.dossier-timeline,
+.dossier-sources {
+  display: grid;
+  gap: 8px;
+}
+
+.dossier-meta h3,
+.dossier-score h3,
+.record-section h3,
+.dossier-timeline h3,
+.dossier-sources h3 {
+  font-size: 13px;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--text-2);
+}
+
+.dossier-score {
+  padding: 12px;
+  border: var(--border-w) solid var(--line);
+  border-radius: 10px;
+  background: #0e161a;
+}
+
+.score-inputs {
+  display: grid;
+  gap: 5px;
+  margin: 0;
+  padding-left: 18px;
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--text-2);
+}
+
+.dossier-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+}
+
+.record-section {
+  padding-top: 10px;
+  border-top: var(--border-w-soft) solid var(--line-soft);
+}
+
+.record-section-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.record-list {
+  display: grid;
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.record-item {
+  padding: 9px 10px;
+  border: var(--border-w-soft) solid var(--line-soft);
+  border-radius: 8px;
+  background: #0c1317;
+}
+
+.record-item-head {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: baseline;
+  font-size: 11px;
+  color: var(--muted);
+}
+
+.record-item-head code {
+  font-size: 10.5px;
+  color: var(--text-2);
+}
+
+.record-status {
+  padding: 1px 6px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.record-item p {
+  margin: 5px 0 0;
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--text-2);
+}
+
+.timeline-list {
+  display: grid;
+  gap: 0;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.timeline-item {
+  display: grid;
+  gap: 2px;
+  padding: 9px 0 9px 14px;
+  border-left: 1px solid var(--line);
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.timeline-item.kind-complaint {
+  border-left-color: #E0A458;
+}
+
+.timeline-item.kind-notice {
+  border-left-color: #D96C4F;
+}
+
+.timeline-item.kind-permit {
+  border-left-color: #6E9AA8;
+}
+
+.timeline-date {
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+  color: var(--muted);
+}
+
+.timeline-kind {
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+  color: var(--faint);
+}
+
+.timeline-detail {
+  color: var(--text-2);
+}
+
+.dossier-verification {
+  display: grid;
+  gap: 8px;
+  padding-top: 10px;
+  border-top: var(--border-w-soft) solid var(--line-soft);
+}
+
+.dossier-verification h3 {
+  font-size: 13px;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--text-2);
+}
+
+.check-list {
+  display: grid;
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.check-item {
+  padding: 9px 10px;
+  border: var(--border-w-soft) solid var(--line-soft);
+  border-radius: 8px;
+  background: #0c1317;
+}
+
+.check-item p {
+  margin: 5px 0;
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--text-2);
+}
+
+.check-photo {
+  display: block;
+  max-width: 100%;
+  margin: 6px 0;
+  border-radius: 8px;
+}
+
+.dossier-status-key {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 14px;
+  margin: 0;
+  padding: 0;
+  font-size: 11px;
+  color: var(--muted);
+  list-style: none;
+}

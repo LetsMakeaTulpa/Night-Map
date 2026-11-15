@@ -53,155 +53,191 @@ export function SettingsPanel({ onClose }: { onClose: () => void }) {
         </button>
       </header>
 
-      <section className="drawer-section">
-        <h3>Routing & geocoding</h3>
-        <label className="field">
-          <span>Walking route provider</span>
-          <select
-            value={state.settings.routingProvider}
-            onChange={(e) => void actions.setSettings({ routingProvider: e.target.value as 'osrm' | 'disabled' })}
-          >
-            <option value="osrm">OSRM walking (public FOSSGIS demo)</option>
-            <option value="disabled">Off — straight-line distance only</option>
-          </select>
-          <span className="field-foot">
-            The public demo has fair-use limits and no SLA. A production deployment should self-host OSRM or use a paid
-            routing provider; the adapter lives behind one interface.
-          </span>
-        </label>
-        <label className="field">
-          <span>Address search</span>
-          <select
-            value={state.settings.geocodingProvider}
-            onChange={(e) => void actions.setSettings({ geocodingProvider: e.target.value as 'local' | 'photon' })}
-          >
-            <option value="local">Night Map index only</option>
-            <option value="photon">Also allow Photon (OpenStreetMap) citywide lookup</option>
-          </select>
-          <span className="field-foot">
-            The wider lookup sends your typed address to photon.komoot.io. Results are map pins, not resource records.
-          </span>
-        </label>
-        <label className="field">
-          <span>Distance units</span>
-          <select
-            value={state.settings.units}
-            onChange={(e) => void actions.setSettings({ units: e.target.value as 'metric' | 'imperial' })}
-          >
-            <option value="metric">Metric</option>
-            <option value="imperial">Imperial</option>
-          </select>
-        </label>
-      </section>
-
-      <section className="drawer-section">
-        <h3>Location</h3>
-        <dl className="meta-table">
-          <div className="meta-row">
-            <dt>Permission</dt>
-            <dd>{state.settings.locationPermission}</dd>
-          </div>
-          <div className="meta-row">
-            <dt>This session</dt>
-            <dd>{state.userLocation ? `fix ±${Math.round(state.userLocation.accuracy)} m, memory only` : 'No fix held'}</dd>
-          </div>
-          <div className="meta-row">
-            <dt>Background location</dt>
-            <dd>
-              Off. Not implemented, not requested.
-              <span className="meta-note">Night Map never records a track or shares your position with anyone.</span>
-            </dd>
-          </div>
-        </dl>
-        <button type="button" className="button ghost small" onClick={() => void actions.useCurrentLocation()}>
-          Request a one-time location fix
-        </button>
-      </section>
-
-      <section className="drawer-section">
-        <h3>Offline & cache</h3>
-        <p className="muted small">
-          The basemap, records and sources are bundled in this build ({formatBytes(dataset.data.meta ? JSON.stringify(dataset.data.meta).length : 0)} of
-          metadata). The service worker caches the app shell after the first successful load. Routing and wider address
-          lookup always need a connection.
-        </p>
-        <dl className="meta-table">
-          <div className="meta-row">
-            <dt>Bundled data</dt>
-            <dd>{formatDate(dataset.data.meta.generatedAt)}</dd>
-          </div>
-          <div className="meta-row">
-            <dt>Service-worker caches</dt>
-            <dd>{cacheNames.length ? cacheNames.join(', ') : 'None on this origin yet'}</dd>
-          </div>
-          <div className="meta-row">
-            <dt>Storage used</dt>
-            <dd>{usage ? `${formatBytes(usage.usage)} of ~${formatBytes(usage.quota)}` : 'Not reported by browser'}</dd>
-          </div>
-        </dl>
-        <div className="button-row">
-          <button
-            type="button"
-            className="button ghost small"
-            onClick={() => {
-              void clearCaches();
-              void estimateStorage().then(setUsage);
-            }}
-          >
-            Clear cached files
-          </button>
-          <button type="button" className="button ghost small" onClick={() => window.location.reload()}>
-            Reload from bundled data
-          </button>
+      <details className="drawer-group" open>
+        <summary>
+          <span>Routing & geocoding</span>
+        </summary>
+        <div className="drawer-group-body">
+          <label className="field">
+            <span>Walking route provider</span>
+            <select
+              value={state.settings.routingProvider}
+              onChange={(e) => void actions.setSettings({ routingProvider: e.target.value as 'osrm' | 'disabled' })}
+            >
+              <option value="osrm">OSRM walking (public demo)</option>
+              <option value="disabled">Off — straight-line distance only</option>
+            </select>
+            <span className="field-foot">
+              Public FOSSGIS demo: fair use, no SLA. Production should self-host or use a paid provider.
+            </span>
+          </label>
+          <label className="field">
+            <span>Address search</span>
+            <select
+              value={state.settings.geocodingProvider}
+              onChange={(e) => void actions.setSettings({ geocodingProvider: e.target.value as 'local' | 'photon' })}
+            >
+              <option value="local">Night Map index only</option>
+              <option value="photon">Also allow Photon citywide lookup</option>
+            </select>
+            <span className="field-foot">
+              Wider lookup sends the address you type to photon.komoot.io. Results are pins, not records.
+            </span>
+          </label>
+          <label className="field">
+            <span>Distance units</span>
+            <select
+              value={state.settings.units}
+              onChange={(e) => void actions.setSettings({ units: e.target.value as 'metric' | 'imperial' })}
+            >
+              <option value="metric">Metric</option>
+              <option value="imperial">Imperial</option>
+            </select>
+          </label>
         </div>
-      </section>
+      </details>
 
-      <section className="drawer-section">
-        <h3>Your records</h3>
-        <p className="muted small">
-          Storage mode: {storageMode}. Saved places, field notes, collections, reports and layer views live in this
-          browser only. There is no account and no server copy.
-        </p>
-        <div className="button-row">
-          <button type="button" className="button small" onClick={() => void exportData()}>
-            Export my data (JSON)
-          </button>
-          {confirmDelete ? (
-            <>
-              <button
-                type="button"
-                className="button danger small"
-                onClick={() => {
-                  void deletePersonalData().then(() => {
-                    actions.notify('Deleted saved places, notes, collections, reports and layer views from this device.', 'success');
-                    setConfirmDelete(false);
-                  });
-                }}
-              >
-                Yes, delete everything local
-              </button>
-              <button type="button" className="button ghost small" onClick={() => setConfirmDelete(false)}>
-                Cancel
-              </button>
-            </>
-          ) : (
-            <button type="button" className="button ghost small" onClick={() => setConfirmDelete(true)}>
-              Delete my local data
+      <details className="drawer-group">
+        <summary>
+          <span>Location</span>
+        </summary>
+        <div className="drawer-group-body">
+          <dl className="meta-table">
+            <div className="meta-row">
+              <dt>Permission</dt>
+              <dd>{state.settings.locationPermission}</dd>
+            </div>
+            <div className="meta-row">
+              <dt>This session</dt>
+              <dd>
+                {state.userLocation
+                  ? `Fix ±${Math.round(state.userLocation.accuracy)} m, memory only${state.gpsLocked ? ' · map following live' : ''}`
+                  : state.gpsLocked
+                    ? 'GPS lock on, waiting for a fix'
+                    : 'No fix held'}
+              </dd>
+            </div>
+            <div className="meta-row">
+              <dt>Background</dt>
+              <dd>
+                Off, not implemented. No track is recorded or shared.
+              </dd>
+            </div>
+          </dl>
+          <div className="button-row">
+            <button type="button" className="button ghost small" onClick={() => void actions.useCurrentLocation()}>
+              Request a one-time fix
             </button>
-          )}
+            <button
+              type="button"
+              className={`button small ${state.gpsLocked ? 'primary' : 'ghost'}`}
+              onClick={actions.toggleGpsLock}
+              aria-pressed={state.gpsLocked}
+            >
+              {state.gpsLocked ? 'Release GPS lock' : 'Lock map to my GPS'}
+            </button>
+          </div>
         </div>
-      </section>
+      </details>
 
-      <section className="drawer-section">
-        <h3>What Night Map does not do</h3>
-        <ul className="plain-list">
-          <li>No account, no tracking, no analytics, no ads.</li>
-          <li>No public feed of people or encampments.</li>
-          <li>No crime, safety or “risk” scores for streets or people.</li>
-          <li>No claim that a marker means a service is open, stocked or available.</li>
-          <li>No live bed availability, live arrivals, or live opening status.</li>
-        </ul>
-      </section>
+      <details className="drawer-group">
+        <summary>
+          <span>Offline & cache</span>
+        </summary>
+        <div className="drawer-group-body">
+          <p className="group-note">
+            Basemap, records and sources are bundled. Caches fill after the first load; routing and wider address lookup
+            always need a connection.
+          </p>
+          <dl className="meta-table">
+            <div className="meta-row">
+              <dt>Bundled data</dt>
+              <dd>{formatDate(dataset.data.meta.generatedAt)}</dd>
+            </div>
+            <div className="meta-row">
+              <dt>SW caches</dt>
+              <dd>{cacheNames.length ? cacheNames.join(', ') : 'None on this origin yet'}</dd>
+            </div>
+            <div className="meta-row">
+              <dt>Storage</dt>
+              <dd>{usage ? `${formatBytes(usage.usage)} of ~${formatBytes(usage.quota)}` : 'Not reported'}</dd>
+            </div>
+          </dl>
+          <div className="button-row">
+            <button
+              type="button"
+              className="button ghost small"
+              onClick={() => {
+                void clearCaches();
+                void estimateStorage().then(setUsage);
+              }}
+            >
+              Clear cached files
+            </button>
+            <button type="button" className="button ghost small" onClick={() => window.location.reload()}>
+              Reload bundled data
+            </button>
+          </div>
+        </div>
+      </details>
+
+      <details className="drawer-group">
+        <summary>
+          <span>Your records</span>
+        </summary>
+        <div className="drawer-group-body">
+          <p className="group-note">
+            Storage mode: {storageMode}. Saved places, notes, collections, reports and layer views live in this browser
+            only. No account, no server copy.
+          </p>
+          <div className="button-row">
+            <button type="button" className="button small" onClick={() => void exportData()}>
+              Export data (JSON)
+            </button>
+            {confirmDelete ? (
+              <>
+                <button
+                  type="button"
+                  className="button danger small"
+                  onClick={() => {
+                    void deletePersonalData().then(() => {
+                      actions.notify(
+                        'Deleted saved places, notes, collections, reports and layer views from this device.',
+                        'success',
+                      );
+                      setConfirmDelete(false);
+                    });
+                  }}
+                >
+                  Yes, delete everything
+                </button>
+                <button type="button" className="button ghost small" onClick={() => setConfirmDelete(false)}>
+                  Cancel
+                </button>
+              </>
+            ) : (
+              <button type="button" className="button ghost small" onClick={() => setConfirmDelete(true)}>
+                Delete local data
+              </button>
+            )}
+          </div>
+        </div>
+      </details>
+
+      <details className="drawer-group drawer-fineprint">
+        <summary>
+          <span>What Night Map does not do</span>
+        </summary>
+        <div className="drawer-group-body">
+          <ul className="plain-list">
+            <li>No account, no tracking, no analytics, no ads.</li>
+            <li>No public feed of people or encampments.</li>
+            <li>No crime, safety or “risk” scores for streets or people.</li>
+            <li>No claim that a marker means a service is open, stocked or available.</li>
+            <li>No live bed availability, live arrivals, or live opening status.</li>
+          </ul>
+        </div>
+      </details>
     </aside>
   );
 }

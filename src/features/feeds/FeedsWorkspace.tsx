@@ -1,4 +1,3 @@
-import { dataset } from '../../data';
 import { useStore } from '../../state/store';
 
 export type FeedKind = 'cctv' | 'radio';
@@ -26,7 +25,7 @@ const CONTENT: Record<FeedKind, FeedContent> = {
     why: [
       'Night Map could not find any public live camera feed for San Francisco, with or without a licence that would allow an app to embed it. The City’s traffic-camera pages are browsable pages, not a feed.',
       'There is also no register of where the City’s cameras are. The City publishes an inventory of surveillance technologies department by department, not positions; the transport agency’s reports describe its camera systems without placing them; and the Police Department has stated it will not create a registry of cameras owned by non-City entities.',
-      'Building a layer from those documents would mean inferring positions this app cannot support. It will not do that, and Atlas → Disclosures lists the documents with that gap stated next to each one.',
+      'Building a layer from those documents would mean inferring positions this app cannot support. It will not do that, and the documents are linked below with that gap stated next to each one.',
     ],
     checkedTitle: 'What was actually read',
     checked: [
@@ -91,10 +90,6 @@ export function FeedsWorkspace({ kind }: { kind: FeedKind }) {
   const { state, actions } = useStore();
   const content = CONTENT[kind];
   const allOn = content.layerIds.every((id) => state.layers[id]);
-  const published = dataset.data.disclosures.filter((entry) =>
-    kind === 'cctv' ? entry.documentType !== 'privacy_statement' : true,
-  );
-
   const showSnapshots = () => {
     for (const id of content.layerIds) actions.setLayer(id, true);
     actions.setWorkspace('map');
@@ -144,10 +139,6 @@ export function FeedsWorkspace({ kind }: { kind: FeedKind }) {
             </li>
           ))}
         </ul>
-        <p className="muted small">
-          {published.length} disclosure {published.length === 1 ? 'document is' : 'documents are'} listed in Atlas →
-          Disclosures with what each one does and does not say.
-        </p>
       </section>
 
       <section>
@@ -156,16 +147,6 @@ export function FeedsWorkspace({ kind }: { kind: FeedKind }) {
         <div className="button-row">
           <button type="button" className="button primary small" onClick={showSnapshots}>
             {allOn ? 'Show the snapshots on the map' : content.layerBlurb}
-          </button>
-          <button
-            type="button"
-            className="button ghost small"
-            onClick={() => {
-              actions.setWorkspace('atlas');
-              actions.setSheet('peek');
-            }}
-          >
-            Open the City’s disclosure documents
           </button>
         </div>
       </section>
