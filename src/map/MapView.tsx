@@ -41,6 +41,15 @@ import {
   removeMapillaryCoverage,
 } from './mapillary-coverage';
 import { buildingById, cachedBuildingRegistry, loadBuildingRegistry } from '../data/building-registry';
+import { formatDistance, haversineMeters } from '../domain/geo';
+import {
+  DEFAULT_VICINITY_RADIUS_M,
+  OUTSIDE_LIMIT_OPTIONS,
+  VICINITY_RADIUS_OPTIONS,
+  circlePolygon,
+  vicinityViews,
+  type OutsideLimit,
+} from './poi-vicinity';
 import { cachedAbandonedBuildings, loadAbandonedBuildings } from '../data/abandoned-buildings';
 import type { AbandonedBuildingFile, BuildingDossier } from '../domain/types';
 
@@ -112,12 +121,22 @@ export function MapView({ views, onOpenLayers, onLiveCountsChange, onAddMissingP
   const [streetOpen, setStreetOpen] = useState(false);
   const [streetCenter, setStreetCenter] = useState<[number, number]>([-122.4085, 37.7835]);
   const [missingPlacePicking, setMissingPlacePicking] = useState(false);
+  const [vicinityOpen, setVicinityOpen] = useState(false);
+  const [vicinityOn, setVicinityOn] = useState(true);
+  const [vicinityRadius, setVicinityRadius] = useState<number>(DEFAULT_VICINITY_RADIUS_M);
+  const [outsideLimit, setOutsideLimit] = useState<OutsideLimit>(25);
+  const [visiblePoiCount, setVisiblePoiCount] = useState(views.length);
+  const [visibleStopCount, setVisibleStopCount] = useState(0);
+  const abandonedOn = Boolean(state.layers['abandoned-buildings']);
   const [mapillaryToken, setMapillaryToken] = useState<string | null>(() => readMapillaryToken());
   const [coverageIssue, setCoverageIssue] = useState<string | null>(null);
   const [registryState, setRegistryState] = useState<{ loaded: number; error: string | null }>({
     loaded: 0,
     error: null,
   });
+  const [abandonedFile, setAbandonedFile] = useState<AbandonedBuildingFile | null>(() =>
+    cachedAbandonedBuildings(),
+  );
   const [abandonedState, setAbandonedState] = useState<{ loaded: number; error: string | null }>({
     loaded: 0,
     error: null,
@@ -392,40 +411,88 @@ export function MapView({ views, onOpenLayers, onLiveCountsChange, onAddMissingP
     };
   }, [minimapOpen, ready]);
 
-  // Keep the canvas in sync with filtered data.
+  // Keep the canvas in sync with filtered data. With the radius on, every
+  // nearby record stays and only a bounded set of essentials survives beyond
+  // it; the source is reapplied after a pan rather than on every frame.
   useEffect(() => {
     const map = mapRef.current;
     if (!map || !ready) return;
-    const features = views.map((view) => ({
-      type: 'Feature' as const,
-      id: view.place.id,
-      properties: {
-        id: view.place.id,
-        category: view.place.category,
-        saved: view.saved,
-        name: view.place.name,
-      },
-      geometry: view.place.geometry,
-    }));
-    (map.getSource('places') as maplibregl.GeoJSONSource | undefined)?.setData({
-      type: 'FeatureCollection',
-      features,
-    });
-  }, [views, ready]);
-
-  useEffect(() => {
-    const map = mapRef.current;
-    if (!map || !ready) return;
-    const fc = (map.getSource('stops') as maplibregl.GeoJSONSource | undefined);
-    fc?.setData({
-      type: 'FeatureCollection',
-      features: dataset.data.transit.map((stop) => ({
+    let disposed = false;
+    const apply = () => {
+      if (disposed) return;
+      const center = map.getCenter();
+      const shown = vicinityOn
+        ? vicinityViews(views, [center.lng, center.lat], vicinityRadius, outsideLimit)
+        : views;
+      const features = shown.map((view) => ({
         type: 'Feature' as const,
-        properties: { id: stop.id, name: stop.name },
-        geometry: stop.geometry,
-      })),
-    });
-  }, [ready]);
+        id: view.place.id,
+        properties: {
+          id: view.place.id,
+          category: view.place.category,
+          saved: view.saved,
+          name: view.place.name,
+        },
+        geometry: view.place.geometry,
+      }));
+      (map.getSource('places') as maplibregl.GeoJSONSource | undefined)?.setData({
+        type: 'FeatureCollection',
+        features,
+      });
+      (map.getSource('vicinity') as maplibregl.GeoJSONSource | undefined)?.setData(
+        vicinityOn
+          ? {
+              type: 'FeatureCollection',
+              features: [circlePolygon([center.lng, center.lat], vicinityRadius)],
+            }
+          : EMPTY_FC,
+      );
+      const shownStops = vicinityOn
+        ? dataset.data.transit.filter(
+            (stop) =>
+              haversineMeters([center.lng, center.lat], stop.geometry.coordinates) <= vicinityRadius,
+          )
+        : dataset.data.transit;
+      (map.getSource('stops') as maplibregl.GeoJSONSource | undefined)?.setData({
+        type: 'FeatureCollection',
+        features: shownStops.map((stop) => ({
+          type: 'Feature' as const,
+          properties: { id: stop.id, name: stop.name },
+          geometry: stop.geometry,
+        })),
+      });
+      const shownAbandoned =
+        abandonedOn && abandonedFile
+          ? vicinityOn
+            ? abandonedFile.dossiers.filter(
+                (dossier) =>
+                  haversineMeters([center.lng, center.lat], dossier.coordinates) <= vicinityRadius,
+              )
+            : abandonedFile.dossiers
+          : [];
+      (map.getSource('abandonedBuildings') as maplibregl.GeoJSONSource | undefined)?.setData({
+        type: 'FeatureCollection',
+        features: shownAbandoned.map((dossier) => ({
+          type: 'Feature' as const,
+          properties: {
+            id: dossier.id,
+            address: dossier.address,
+            status: dossier.status,
+            precision: dossier.locationPrecision,
+          },
+          geometry: { type: 'Point' as const, coordinates: dossier.coordinates },
+        })),
+      } as unknown as GeoJSON.FeatureCollection);
+      setVisiblePoiCount(shown.length);
+      setVisibleStopCount(shownStops.length);
+    };
+    apply();
+    if (vicinityOn) map.on('moveend', apply);
+    return () => {
+      disposed = true;
+      map.off('moveend', apply);
+    };
+  }, [views, ready, vicinityOn, vicinityRadius, outsideLimit, abandonedOn, abandonedFile]);
 
   useEffect(() => {
     const map = mapRef.current;
@@ -759,31 +826,17 @@ export function MapView({ views, onOpenLayers, onLiveCountsChange, onAddMissingP
 
   // Vacancy/abandonment markers are a point-only extract, small enough to load
   // by default. They are deliberately separate from the multi-megabyte registry.
-  const abandonedOn = Boolean(state.layers['abandoned-buildings']);
   useEffect(() => {
-    const map = mapRef.current;
-    if (!map || !ready) return;
-    const source = map.getSource('abandonedBuildings') as maplibregl.GeoJSONSource | undefined;
+    if (!ready) return;
     if (!abandonedOn) {
-      source?.setData(EMPTY_FC);
       setAbandonedState({ loaded: 0, error: null });
       return;
     }
     let cancelled = false;
     const apply = (file: AbandonedBuildingFile) => {
       if (cancelled) return;
-      const features = file.dossiers.map((dossier) => ({
-        type: 'Feature' as const,
-        properties: {
-          id: dossier.id,
-          address: dossier.address,
-          status: dossier.status,
-          precision: dossier.locationPrecision,
-        },
-        geometry: { type: 'Point' as const, coordinates: dossier.coordinates },
-      }));
-      source?.setData({ type: 'FeatureCollection', features } as unknown as GeoJSON.FeatureCollection);
-      setAbandonedState({ loaded: features.length, error: null });
+      setAbandonedFile(file);
+      setAbandonedState({ loaded: file.dossiers.length, error: null });
     };
     const held = cachedAbandonedBuildings();
     if (held) apply(held);
@@ -1206,8 +1259,8 @@ export function MapView({ views, onOpenLayers, onLiveCountsChange, onAddMissingP
     map.easeTo({ center, zoom: state.userLocation ? 16 : 14.1, padding: MAP_PADDING(), duration: 600 });
   };
 
-  const stopCount = views.length;
   const is3d = camera.pitch > 4;
+  const recordWord = views.length === 1 ? 'record' : 'records';
 
   const openStreetImagery = () => {
     if (streetOpen) {
@@ -1277,8 +1330,17 @@ export function MapView({ views, onOpenLayers, onLiveCountsChange, onAddMissingP
       )}
 
       <div className="map-topline">
-        <span className="map-scale-note is-count">
-          {stopCount} {stopCount === 1 ? 'record' : 'records'} in this filter
+        <span
+          className={`map-scale-note is-count ${vicinityOn ? 'is-limited' : ''}`}
+          data-testid="poi-count"
+          title={
+            vicinityOn
+              ? `Every record within ${formatDistance(vicinityRadius)} of the map centre, plus up to ${outsideLimit} essential records beyond it. Saved places rank first.`
+              : 'Radius limit off: every record passing the current filters is on the map.'
+          }
+        >
+          {visiblePoiCount} of {views.length} {recordWord} · {visibleStopCount} stops
+          {vicinityOn ? ` · ${formatDistance(vicinityRadius)} radius` : ' · full area'}
         </span>
         {is3d && (
           <span className="map-scale-note is-3d">
@@ -1428,12 +1490,28 @@ export function MapView({ views, onOpenLayers, onLiveCountsChange, onAddMissingP
         <button
           type="button"
           className="map-control"
-          onClick={() => setLegendOpen((v) => !v)}
+          onClick={() => {
+            setLegendOpen((v) => !v);
+            setVicinityOpen(false);
+          }}
           aria-label="Map legend"
           aria-expanded={legendOpen}
           title="Legend"
         >
           <LegendIcon />
+        </button>
+        <button
+          type="button"
+          className={`map-control ${vicinityOpen ? 'is-active' : ''}`}
+          onClick={() => {
+            setVicinityOpen((open) => !open);
+            setLegendOpen(false);
+          }}
+          aria-label="Visible POI radius"
+          aria-expanded={vicinityOpen}
+          title="Limit visible POIs to a radius"
+        >
+          <RadiusIcon />
         </button>
         <button
           type="button"
@@ -1497,6 +1575,64 @@ export function MapView({ views, onOpenLayers, onLiveCountsChange, onAddMissingP
         <CrosshairIcon />
         <span>{state.gpsLocked ? 'GPS locked' : 'Recenter'}</span>
       </button>
+
+      {vicinityOpen && (
+        <div className="legend vicinity-panel" role="dialog" aria-label="Visible POI radius">
+          <div className="legend-head">
+            <h3>Visible POIs</h3>
+            <button
+              type="button"
+              className="icon-button"
+              onClick={() => setVicinityOpen(false)}
+              aria-label="Close visible POI settings"
+            >
+              ×
+            </button>
+          </div>
+          <label className="vicinity-toggle">
+            <input
+              type="checkbox"
+              checked={vicinityOn}
+              onChange={(event) => setVicinityOn(event.target.checked)}
+            />
+            <span>Limit the map to a nearby radius</span>
+          </label>
+          <label className="field">
+            <span>Radius from map centre</span>
+            <select
+              value={vicinityRadius}
+              disabled={!vicinityOn}
+              onChange={(event) => setVicinityRadius(Number(event.target.value))}
+            >
+              {VICINITY_RADIUS_OPTIONS.map((metres) => (
+                <option key={metres} value={metres}>
+                  {formatDistance(metres)}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label className="field">
+            <span>Outside the radius</span>
+            <select
+              value={outsideLimit}
+              disabled={!vicinityOn}
+              onChange={(event) => setOutsideLimit(Number(event.target.value) as OutsideLimit)}
+            >
+              {OUTSIDE_LIMIT_OPTIONS.map((limit) => (
+                <option key={limit} value={limit}>
+                  {limit === 0 ? 'Hide them' : `${limit} essential records`}
+                </option>
+              ))}
+            </select>
+          </label>
+          <p className="field-foot">
+            Every record inside the ring stays. Beyond it, saved places rank first, then drinking water,
+            restrooms, food, shelter, medical, services and charging — nearest first. Transit stops and
+            vacancy markers follow the same ring. This limits what is drawn, not what the filters count or
+            what search can find.
+          </p>
+        </div>
+      )}
 
       {legendOpen && (
         <div className="legend" role="dialog" aria-label="Map legend">
@@ -1670,6 +1806,16 @@ function CompassIcon({ bearing }: { bearing: number }) {
     <svg viewBox="0 0 24 24" aria-hidden="true" style={{ transform: `rotate(${-bearing}deg)` }}>
       <circle cx="12" cy="12" r="8.6" />
       <path d="M12 18.4V5.6M8.8 8.8 12 5.6l3.2 3.2" />
+    </svg>
+  );
+}
+
+function RadiusIcon() {
+  return (
+    <svg viewBox="0 0 24 24" aria-hidden="true">
+      <circle cx="12" cy="12" r="8.5" strokeDasharray="2 2.6" />
+      <circle cx="12" cy="12" r="2.2" />
+      <path d="M12 1.8v3M12 19.2v3M1.8 12h3M19.2 12h3" />
     </svg>
   );
 }

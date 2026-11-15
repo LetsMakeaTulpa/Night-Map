@@ -47,6 +47,33 @@ const NAV_ITEMS = [...WORKSPACES, ...FEED_TABS];
 type WorkspaceId = (typeof WORKSPACES)[number]['id'];
 type NavId = WorkspaceId | (typeof FEED_TABS)[number]['id'];
 
+const PANEL_EXIT_MS = 180;
+
+function prefersReducedMotion() {
+  return (
+    typeof window !== 'undefined' &&
+    typeof window.matchMedia === 'function' &&
+    window.matchMedia('(prefers-reduced-motion: reduce)').matches
+  );
+}
+
+/** Keep a panel mounted for its exit animation, then remove it. */
+function useExitPresence(visible: boolean, durationMs: number) {
+  const [mounted, setMounted] = useState(visible);
+
+  useEffect(() => {
+    if (visible) {
+      setMounted(true);
+      return;
+    }
+    if (!mounted) return;
+    const timer = window.setTimeout(() => setMounted(false), durationMs);
+    return () => window.clearTimeout(timer);
+  }, [visible, mounted, durationMs]);
+
+  return { mounted: visible || mounted, closing: !visible && mounted };
+}
+
 /**
  * The phone bar carries the four workspaces used in the field, with the two feed
  * status panels at the end. Notes and Review are not on the bar: each keeps a
@@ -103,6 +130,34 @@ export function AppShell() {
         : null)
     : null;
   const openReportCount = useMemo(() => state.reports.filter(isOpenReport).length, [state.reports]);
+
+  const panelExitMs = prefersReducedMotion() ? 0 : PANEL_EXIT_MS;
+  const leftPanel = useExitPresence(state.workspace !== 'map', panelExitMs);
+  const rightPanel = useExitPresence(
+    Boolean(selectedPlace || state.selectedBuildingId),
+    panelExitMs,
+  );
+  const lastWorkspace = useRef(state.workspace);
+  const lastInspector = useRef<{ place: typeof selectedPlace; buildingId: string | null }>({
+    place: selectedPlace,
+    buildingId: state.selectedBuildingId,
+  });
+
+  useEffect(() => {
+    if (state.workspace !== 'map') lastWorkspace.current = state.workspace;
+  }, [state.workspace]);
+
+  useEffect(() => {
+    if (selectedPlace || state.selectedBuildingId) {
+      lastInspector.current = { place: selectedPlace, buildingId: state.selectedBuildingId };
+    }
+  }, [selectedPlace, state.selectedBuildingId]);
+
+  const shownWorkspace = state.workspace !== 'map' ? state.workspace : lastWorkspace.current;
+  const shownInspector =
+    selectedPlace || state.selectedBuildingId
+      ? { place: selectedPlace, buildingId: state.selectedBuildingId }
+      : lastInspector.current;
 
   // Deep link: #/place/<id>
   useEffect(() => {
@@ -215,6 +270,7 @@ export function AppShell() {
   }, [desktop]);
 
   const sheetHeights = {
+    dismissed: 0,
     collapsed: 104,
     peek: Math.round((typeof window === 'undefined' ? 800 : window.innerHeight) * 0.46),
     expanded: Math.round((typeof window === 'undefined' ? 800 : window.innerHeight) * 0.86),
@@ -230,7 +286,10 @@ export function AppShell() {
     const drag = dragRef.current;
     if (!drag) return;
     const delta = drag.startY - event.clientY;
-    const next = Math.min(sheetHeights.expanded + 40, Math.max(sheetHeights.collapsed - 24, drag.startHeight + delta));
+    const next = Math.min(
+      sheetHeights.expanded + 40,
+      Math.max(0, drag.startHeight + delta),
+    );
     drag.currentHeight = next;
     setDragHeight(next);
   };
@@ -243,6 +302,12 @@ export function AppShell() {
     }
     setSheetDrag(null);
     setDragHeight(null);
+    // A deliberate downward swipe past the collapsed rail dismisses the sheet
+    // entirely. Tapping the Nearby tab brings it back at half height.
+    if (drag.currentHeight <= sheetHeights.collapsed * 0.7) {
+      actions.setSheet('dismissed');
+      return;
+    }
     const options: { id: 'collapsed' | 'peek' | 'expanded'; distance: number }[] = (
       ['collapsed', 'peek', 'expanded'] as const
     ).map((id) => ({ id, distance: Math.abs(sheetHeights[id] - drag.currentHeight) }));
@@ -250,8 +315,8 @@ export function AppShell() {
     if (options[0].id !== state.sheet) actions.setSheet(options[0].id);
   };
 
-  const workspaceContent = () => {
-    switch (state.workspace) {
+  const workspaceContent = (workspace = state.workspace) => {
+    switch (workspace) {
       case 'cctv':
         return <FeedsWorkspace kind="cctv" />;
       case 'radio':
@@ -296,8 +361,8 @@ export function AppShell() {
   if (desktop) {
     return (
       <div
-        className={`app app-desktop ${state.workspace !== 'map' ? 'has-panel' : ''} ${
-          selectedPlace || state.selectedBuildingId ? 'has-inspector' : ''
+        className={`app app-desktop ${leftPanel.mounted ? 'has-panel' : ''} ${
+          rightPanel.mounted ? 'has-inspector' : ''
         } ${layersOpen || settingsOpen || targetsOpen || searchOpen ? 'has-flyout' : ''}`}
       >
         <aside className="side-rail" aria-label="Map tools">
@@ -438,11 +503,15 @@ export function AppShell() {
           />
         </main>
 
-        {state.workspace !== 'map' && (
-          <aside className="float-panel panel-left" aria-label="Workspace">
+        {leftPanel.mounted && (
+          <aside
+            className={`float-panel panel-left ${leftPanel.closing ? 'is-closing' : ''}`}
+            aria-label="Workspace"
+            aria-hidden={leftPanel.closing || undefined}
+          >
             <header className="float-panel-head">
               <span className="eyebrow">
-                {NAV_ITEMS.find((item) => item.id === state.workspace)?.label ?? 'Workspace'}
+                {NAV_ITEMS.find((item) => item.id === shownWorkspace)?.label ?? 'Workspace'}
               </span>
               <button
                 type="button"
@@ -453,17 +522,21 @@ export function AppShell() {
                 ×
               </button>
             </header>
-            <div className="float-panel-body">{workspaceContent()}</div>
+            <div className="float-panel-body">{workspaceContent(shownWorkspace)}</div>
           </aside>
         )}
 
-        {(selectedPlace || state.selectedBuildingId) && (
-          <aside className="float-panel panel-right" aria-label="Record inspector">
+        {rightPanel.mounted && (
+          <aside
+            className={`float-panel panel-right ${rightPanel.closing ? 'is-closing' : ''}`}
+            aria-label="Record inspector"
+            aria-hidden={rightPanel.closing || undefined}
+          >
             <div className="float-panel-body">
               {state.workspace === 'buildings' ? (
-                state.selectedBuildingId ? (
+                shownInspector.buildingId ? (
                   <BuildingDossier
-                    dossierId={state.selectedBuildingId}
+                    dossierId={shownInspector.buildingId}
                     onBack={() => actions.selectBuilding(null)}
                     onComposeCheck={setComposeTarget}
                   />
@@ -482,10 +555,10 @@ export function AppShell() {
                     </p>
                   </div>
                 )
-              ) : selectedPlace ? (
+              ) : shownInspector.place ? (
                 <>
                   <PlaceInspector
-                    placeId={selectedPlace.id}
+                    placeId={shownInspector.place.id}
                     onClose={() => actions.selectPlace(null)}
                     onComposeNote={(target) => setComposeTarget(target)}
                   />
@@ -757,12 +830,13 @@ export function AppShell() {
         className={`sheet sheet-${state.sheet} ${sheetDrag ? 'is-dragging' : ''}`}
         style={{ height: sheetHeight }}
         aria-label="Record panel"
+        aria-hidden={state.sheet === 'dismissed'}
       >
         <div
           className="sheet-handle"
           role="button"
           tabIndex={0}
-          aria-label="Drag to resize panel. Use Enter to cycle collapsed, half and full."
+          aria-label="Drag to resize panel, or swipe down to dismiss. Use Enter to cycle collapsed, half and full."
           onPointerDown={startSheetDrag}
           onPointerMove={moveSheet}
           onPointerUp={endSheetDrag}

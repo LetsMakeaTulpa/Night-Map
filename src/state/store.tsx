@@ -112,7 +112,7 @@ export interface AppState {
   gpsLocked: boolean;
   reference: { coordinates: [number, number]; label: string };
   toast: Toast | null;
-  sheet: 'collapsed' | 'peek' | 'expanded';
+  sheet: 'dismissed' | 'collapsed' | 'peek' | 'expanded';
 }
 
 const DEFAULT_CATEGORIES: CategoryId[] = ['food', 'water', 'bathroom', 'shelter', 'services', 'medical', 'civic', 'passage', 'popos'];

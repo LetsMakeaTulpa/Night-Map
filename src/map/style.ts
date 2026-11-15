@@ -60,6 +60,7 @@ export function buildStyle(): StyleSpecification {
         clusterMaxZoom: 15,
       },
       focus: { type: 'geojson', data: empty },
+      vicinity: { type: 'geojson', data: empty },
       stops: { type: 'geojson', data: empty },
       observations: { type: 'geojson', data: empty },
       external: { type: 'geojson', data: empty },
@@ -301,6 +302,23 @@ export function buildStyle(): StyleSpecification {
           'text-halo-color': THEME.halo,
           'text-halo-width': 1.6,
           'text-opacity': 0.75,
+        },
+      },
+      {
+        id: 'vicinity-fill',
+        type: 'fill',
+        source: 'vicinity',
+        paint: { 'fill-color': THEME.accent, 'fill-opacity': 0.035 },
+      },
+      {
+        id: 'vicinity-line',
+        type: 'line',
+        source: 'vicinity',
+        paint: {
+          'line-color': THEME.accent,
+          'line-width': 1,
+          'line-opacity': 0.55,
+          'line-dasharray': [2, 2],
         },
       },
       {
