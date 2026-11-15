@@ -8,6 +8,7 @@ import { geocodePhoton, GeocodeError } from '../../services/geocoding';
 import { formatDistance } from '../../domain/geo';
 import { EmptyState, EvidencePill, PathIcon, useOnline } from '../ui';
 import { CATEGORY_BY_ID } from '../../domain/categories';
+import { isQuickViewActive, quickViewPatch, type QuickViewId } from '../../domain/discovery-presets';
 
 export function SearchBar({ autoFocus = false, onNavigate }: { autoFocus?: boolean; onNavigate?: () => void }) {
   const { state, actions } = useStore();
@@ -151,8 +152,25 @@ export function FilterBar({ compact = false }: { compact?: boolean }) {
   const { state, actions } = useStore();
   const [expanded, setExpanded] = useState(!compact);
   const active = activeFilterCount(state.filters);
+  const unpopulatedCategories = CATEGORIES.filter(
+    (category) => state.filters.categories.includes(category.id) && (dataset.categoryCounts[category.id] ?? 0) === 0,
+  );
+
+  // Quick-view definitions live in one tested module so labels and active
+  // states always match the filter state they apply.
+  const applyPreset = (preset: QuickViewId) => actions.setFilter(quickViewPatch(preset));
+  const isPresetActive = (preset: QuickViewId) => isQuickViewActive(state.filters, preset);
+
   return (
     <div className="filterbar">
+      <div className="filter-presets" aria-label="Quick map views">
+        <span className="filter-presets-label">Quick views</span>
+        <button type="button" className={`button ghost tiny ${isPresetActive('essentials') ? 'is-active' : ''}`} aria-pressed={isPresetActive('essentials')} onClick={() => applyPreset('essentials')}>Essentials</button>
+        <button type="button" className={`button ghost tiny ${isPresetActive('after-dark') ? 'is-active' : ''}`} aria-pressed={isPresetActive('after-dark')} onClick={() => applyPreset('after-dark')}>After-dark POPOS</button>
+        <button type="button" className={`button ghost tiny ${isPresetActive('connections') ? 'is-active' : ''}`} aria-pressed={isPresetActive('connections')} onClick={() => applyPreset('connections')}>Transit & connections</button>
+        <button type="button" className={`button ghost tiny ${isPresetActive('scenes') ? 'is-active' : ''}`} aria-pressed={isPresetActive('scenes')} onClick={() => applyPreset('scenes')}>Scenes & hideaways</button>
+      </div>
+      <p className="filter-presets-note">Quick views change filters only; they do not confirm current hours, entry rights, or accessibility.</p>
       <div className="filter-chips">
         {CATEGORIES.map((category) => {
           const enabled = state.filters.categories.includes(category.id);
@@ -174,6 +192,12 @@ export function FilterBar({ compact = false }: { compact?: boolean }) {
           );
         })}
       </div>
+      {unpopulatedCategories.length > 0 && (
+        <p className="filter-empty-note" role="note">
+          <strong>Not yet populated:</strong> {unpopulatedCategories.map((category) => category.label).join(', ')}.
+          These categories have no verified records in this central-SF release; their absence is not evidence that the places do not exist.
+        </p>
+      )}
       <button type="button" className="link-button filters-toggle" onClick={() => setExpanded((v) => !v)} aria-expanded={expanded}>
         {expanded ? 'Hide conditions' : `Conditions${active ? ` (${active})` : ''}`}
       </button>

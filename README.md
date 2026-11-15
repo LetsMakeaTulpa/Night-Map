@@ -1,8 +1,8 @@
 # Night Map
 
-A mobile-first field instrument for central San Francisco after dark. Night Map
-combines a nocturnal vector basemap, sourced public-resource records, walking
-routes, private field notes, and a small editorial atlas.
+A mobile-first urban discovery and fieldwork map for San Francisco. Night Map
+combines a detailed vector basemap, sourced public-resource records, public-space
+discovery, walking routes, private field notes, and civic context.
 
 This is a **first slice**, not a citywide directory. It covers a central footprint
 (Downtown, SoMa, Tenderloin, Civic Center, Chinatown, Financial District) and says
@@ -57,7 +57,15 @@ npm run data:sfgov     # DataSF SODA rows → scripts/.cache/*
 npm run data:sfgov -- --refresh # bypass cached API responses and fetch fresh City data
 npm run data:build     # normalise, validate and write places/resources/sources
 npm run data:access    # geocode the hand-checked access records → src/data/access.json
+npm run data:validate:incidents # validate the civic snapshot privacy/geometry boundary
 ```
+
+The published dispatched-call and 311 snapshots are refreshed by GitHub Actions
+once daily at 17:30 UTC after this workflow is merged into the default branch.
+It reruns the source query with the privacy filters, validates the output fields,
+40 m coordinate snapping and footprint, then commits only changed snapshot files.
+You can also run the workflow manually from the Actions tab. The app displays the
+snapshot generation time and newest-record age; a refresh does not make either feed live.
 
 `data:access` is separate from `data:build` on purpose. It reads
 `scripts/inputs/access-records.json` — the mail, phone, device and printing facts
@@ -109,7 +117,7 @@ simplification or the height rules needs no network.
   request: notes and the review queue stay reachable from the header buttons beside search, and all
   three remain in the desktop workspace tabs.
 - Map with clustering, category/condition filters, a legend, saved views, and
-  layer presets (Essentials, Resources, Transit, My fieldnotes, History).
+  layer presets (Essentials, Resources, Transit, My fieldnotes, History, Reported activity, Scenes & hideaways).
 - Place inspector with access, hours, evidence, sources, observation history and
   explicit "Not confirmed"/"Open now not confirmed" states.
 - Nearby list with walking distance, filters, alternatives, and a source/age chip
@@ -124,15 +132,22 @@ simplification or the height rules needs no network.
   overwrite a source value.
 - Atlas workspace with three source-backed neighbourhood guides and a history
   layer that stays visually subordinate to navigation.
-- **Terrain and a 3D view.** Relief shading from a public-domain elevation model
-  (35 tiles at about 7 m per pixel) and **13,975 extruded OpenStreetMap building
-  footprints**. 9,996 carry a height tag, 812 give storey counts, and 3,167 are
-  estimated from footprint type — the legend states that split rather than
-displaying guesses as measurements.
-- **A camera that is not stuck overhead.** Two-finger drag or control-drag tilts and
-  turns the map (up to 78°), the 3D control tilts and switches on the layers that
-  carry height, and a compass returns to north. Extrusion collapses to a flat
-  footprint fill in a plan view.
+- **Terrain and a 3D view.** Relief shading and terrain displacement from a public-domain
+  elevation model (35 tiles at about 7 m per pixel), rendered at true vertical scale (×1),
+  and **13,975 extruded OpenStreetMap building footprints**. 9,996 carry a height tag,
+  812 give storey counts, and 3,167 are estimates from footprint type; estimates are stated
+  explicitly rather than presented as measured heights.
+- **A camera that is not stuck overhead.** Two-finger drag or control-drag tilts and turns
+  the map (up to 78°); the 3D control enables terrain and buildings, and the compass returns
+  to north. Building extrusion collapses to a flat footprint in plan view.
+- **Satellite imagery, independently switchable.** Esri World Imagery sits beneath Night
+  Map's road labels, markers and routes. Aerial capture dates and resolution vary by
+  location; the imagery layer requires a network connection.
+- **Street-level imagery.** A Mapillary viewer searches for a nearby public image around the
+  map centre. The user supplies their own access token at runtime; it remains in component
+  memory only and is never committed or saved by Night Map. Coverage is community-contributed,
+  incomplete and variable by capture date.
+- **Public-realm maintenance context, not a risk score.** A separate map layer and coarse-area count filter the sanitized 311 snapshot for exact City service categories covering streetlights, street/sidewalk cleaning, public graffiti, litter receptacles, street defects and blocked public ways. A request is not proof of an outage, ongoing defect, danger or neglect; counts never become a safe/unsafe rating.
 - **Reported activity, as snapshots and never as a live feed.** Two real City datasets are
   plotted on demand: 525 dispatched calls that had closed within 48 hours, and 2,358 recent
   311 requests. Both are opt-in layers, both are cached on first use rather than installed,

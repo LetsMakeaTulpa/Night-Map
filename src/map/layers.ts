@@ -43,10 +43,20 @@ export const LAYERS: (LayerDefinition & { defaultOpacity?: number })[] = [
     offline: 'bundled',
   },
   {
+    id: 'satellite',
+    name: 'Satellite / aerial imagery',
+    description:
+      'Esri World Imagery raster basemap. Capture dates and resolution vary by location; network connection required.',
+    group: 'base',
+    sourceIds: [],
+    defaultVisible: false,
+    offline: 'requires_network',
+  },
+  {
     id: 'terrain',
     name: 'Terrain shading',
     description:
-      'Relief shading from a public-domain elevation model, about 7 m per pixel. It shows hills and slopes. It cannot show kerbs, stairs, retaining walls or whether a slope is walkable.',
+      'Public-domain elevation model at about 7 m per pixel, rendered at true vertical scale (×1, no exaggeration). It shows broad hills and slopes, not kerbs, stairs or walkable grades.',
     group: 'base',
     sourceIds: ['src:aws-terrain-tiles'],
     defaultVisible: false,
@@ -123,10 +133,21 @@ export const LAYERS: (LayerDefinition & { defaultOpacity?: number })[] = [
     minZoom: 12,
   },
   {
+    id: 'maintenance',
+    name: 'Public-realm maintenance reports',
+    description:
+      'A filtered view of public 311 requests for streetlights, street/sidewalk cleaning, public graffiti, litter receptacles, street defects and blocked public ways. These are requests, not verified defects or a danger score; the nightly snapshot is capped by service type.',
+    group: 'context',
+    sourceIds: ['src:sfgov-cases311'],
+    defaultVisible: false,
+    offline: 'cached_on_demand',
+    minZoom: 13.4,
+  },
+  {
     id: 'cases-311',
     name: '311 service requests (7 days)',
     description:
-      'Recent 311 cases: street cleaning, graffiti, parking, noise, street defects and similar. Nightly dataset, so a request may already be done. Categories that describe a person rather than a place are excluded before publication.',
+      'Recent 311 service requests from the City nightly snapshot. Requests may already be resolved or scheduled, the snapshot is capped by service type, and categories describing a person rather than a place are excluded before publication.',
     group: 'context',
     sourceIds: ['src:sfgov-cases311'],
     defaultVisible: false,
@@ -183,6 +204,11 @@ export const LAYER_PRESETS = [
     name: 'Reported activity',
     description:
       'Recent dispatched calls and 311 requests as published snapshots, with no live feed and nothing that names a person.',
+  },
+  {
+    id: 'scenes-hideaways',
+    name: 'Scenes & hideaways',
+    description: 'Public spaces, POPOS, food and mutual aid, plus curated DIY and music-scene records when verified. No history layer.',
   },
 ] as const;
 

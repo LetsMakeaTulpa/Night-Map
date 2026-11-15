@@ -1,4 +1,5 @@
 import { useMemo, useState } from 'react';
+import { ZoneContextPanel } from '../zones/ZoneContextPanel';
 import type { CategoryId, CorrectionReport, FrictionEntry, Observation, ReportIssue } from '../../domain/types';
 import { dataset } from '../../data';
 import { useStore } from '../../state/store';
@@ -18,7 +19,7 @@ import {
   resolutionLabel,
 } from '../../domain/verification';
 
-type Tab = 'overview' | 'access' | 'history' | 'observations' | 'sources';
+type Tab = 'overview' | 'access' | 'history' | 'observations' | 'sources' | 'area';
 
 const DETAIL_LABELS: Record<string, string> = {
   meals: 'Meal service',
@@ -151,6 +152,7 @@ export function PlaceInspector({ placeId, onClose, onComposeNote }: Props) {
   const friction = frictionFor(resources);
   const tabs: { id: Tab; label: string; count?: number }[] = [
     { id: 'overview', label: 'Overview' },
+    { id: 'area', label: 'Area' },
     { id: 'access', label: 'Access' },
     { id: 'history', label: 'History' },
     ...(observations.length ? [{ id: 'observations' as Tab, label: 'Observations', count: observations.length }] : []),
@@ -406,6 +408,8 @@ export function PlaceInspector({ placeId, onClose, onComposeNote }: Props) {
       </div>
 
       <div className="tab-panel" role="tabpanel" id={`panel-${tab}`} aria-labelledby={`tab-${tab}`}>
+        {tab === 'area' && <ZoneContextPanel coordinates={place.geometry.coordinates} />}
+
         {tab === 'overview' && (
           <div className="stack">
             <p className="description">{place.description}</p>
