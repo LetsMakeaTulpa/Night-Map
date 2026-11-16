@@ -374,6 +374,7 @@ export const observationSchema = z.object({
     'popos_observation',
     'entrance_observation',
     'stairs_ramp_observation',
+    'building_verification',
     'follow_up',
     'other',
   ]),

@@ -13,6 +13,8 @@ const TERRAIN_BBOX = terrainMeta.bbox as [number, number, number, number];
 export const THEME = {
   land: '#0D1317',
   water: '#061528',
+  bayShelf: '#0A263D',
+  bayShallow: '#103C58',
   green: '#153A22',
   greenEdge: '#2A6240',
   coast: '#22333D',
@@ -131,6 +133,37 @@ export function buildStyle(): StyleSpecification {
         type: 'fill',
         source: 'water',
         paint: { 'fill-color': THEME.water, 'fill-opacity': 1 },
+      },
+      {
+        // MapLibre fills cannot interpolate a gradient. Instead, broad soft
+        // lines sit entirely on the water side of the coastline (positive
+        // line-offset follows the line's right side, where the bay is) and
+        // fade into the dark open water. This is depth as a reading aid, not
+        // a bathymetric measurement.
+        id: 'bay-shelf',
+        type: 'line',
+        source: 'coastline',
+        layout: { 'line-cap': 'round', 'line-join': 'round' },
+        paint: {
+          'line-color': THEME.bayShelf,
+          'line-width': ['interpolate', ['linear'], ['zoom'], 10, 70, 14, 140, 18, 210],
+          'line-offset': ['interpolate', ['linear'], ['zoom'], 10, 35, 14, 70, 18, 105],
+          'line-blur': ['interpolate', ['linear'], ['zoom'], 10, 35, 14, 75, 18, 115],
+          'line-opacity': 0.22,
+        },
+      },
+      {
+        id: 'bay-shallow',
+        type: 'line',
+        source: 'coastline',
+        layout: { 'line-cap': 'round', 'line-join': 'round' },
+        paint: {
+          'line-color': THEME.bayShallow,
+          'line-width': ['interpolate', ['linear'], ['zoom'], 10, 28, 14, 56, 18, 92],
+          'line-offset': ['interpolate', ['linear'], ['zoom'], 10, 15, 14, 30, 18, 48],
+          'line-blur': ['interpolate', ['linear'], ['zoom'], 10, 14, 14, 30, 18, 48],
+          'line-opacity': 0.24,
+        },
       },
       {
         // A soft halo under the crisp shoreline. It is deliberately wider than

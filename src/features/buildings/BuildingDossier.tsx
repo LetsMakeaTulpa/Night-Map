@@ -117,7 +117,7 @@ export function BuildingDossier({
           </span>
           {checkSummary.latest && (
             <span className="confidence">
-              Your last check {formatDate(checkSummary.latest.observedAt)} —{' '}
+              Your last field verification {observationStamp(checkSummary.latest.observedAt)} —{' '}
               {buildingConditionLabel(checkSummary.latest.buildingCondition)}
             </span>
           )}
@@ -276,17 +276,18 @@ export function BuildingDossier({
 
       <section className="dossier-verification">
         <div className="record-section-head">
-          <h3>Your condition checks</h3>
+          <h3>Your private field verification</h3>
           <span className="private-lock">Private · this device</span>
         </div>
         <p className="muted small">
-          What you saw from outside, kept beside the City records. A check is never published or sent anywhere, and it
-          never changes what the City file says.
+          A dated observation with an optional photo, kept beside the City records. It is never published or sent
+          anywhere, and it never changes what the City file says.
         </p>
         {onComposeCheck && (
           <button
             type="button"
-            className="button small"
+            className="button small primary"
+            data-testid="add-field-verification"
             onClick={() =>
               onComposeCheck({
                 placeId: null,
@@ -297,17 +298,17 @@ export function BuildingDossier({
               })
             }
           >
-            Record a condition check
+            Add field verification
           </button>
         )}
         {checks.length === 0 ? (
-          <p className="muted small">No private check on this device yet.</p>
+          <p className="muted small">No field verification on this device yet.</p>
         ) : (
           <ul className="check-list">
             {checks.map((check) => (
-              <li key={check.id} className="check-item">
+              <li key={check.id} className="check-item" data-testid="field-verification">
                 <div className="record-item-head">
-                  <span>{formatDate(check.observedAt)}</span>
+                  <span>{observationStamp(check.observedAt)}</span>
                   <span className="record-status">{buildingConditionLabel(check.buildingCondition)}</span>
                 </div>
                 <p>{check.note}</p>
@@ -315,7 +316,7 @@ export function BuildingDossier({
                   <img
                     className="check-photo"
                     src={check.photo.dataUrl}
-                    alt={`Private condition check at ${dossier.address}`}
+                    alt={`Private field verification at ${dossier.address}`}
                   />
                 )}
                 <span className="muted small">Unverified observation · recorded on this device</span>
@@ -354,6 +355,17 @@ export function BuildingDossier({
       </ul>
     </article>
   );
+}
+
+function observationStamp(iso: string): string {
+  const parsed = Date.parse(iso);
+  if (Number.isNaN(parsed)) return formatDate(iso);
+  const time = new Intl.DateTimeFormat('en-GB', {
+    hour: '2-digit',
+    minute: '2-digit',
+    timeZone: 'America/Los_Angeles',
+  }).format(parsed);
+  return `${formatDate(iso)} · ${time}`;
 }
 
 function RecordSection({

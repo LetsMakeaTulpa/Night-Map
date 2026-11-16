@@ -22,6 +22,7 @@ const TYPE_LABELS: Record<string, string> = {
   popos_observation: 'POPOS or public space candidate',
   entrance_observation: 'Entrance or access point',
   stairs_ramp_observation: 'Stairs, ramp or path',
+  building_verification: 'Building field verification',
   follow_up: 'Follow-up needed',
   other: 'Observation',
 };
@@ -209,7 +210,7 @@ export function FieldnotesWorkspace() {
                 </div>
                 {observation.buildingId && (
                   <p className="muted small">
-                    Building check · {buildingConditionLabel(observation.buildingCondition)} ·{' '}
+                    Field verification · {buildingConditionLabel(observation.buildingCondition)} ·{' '}
                     {observation.buildingId.replace('bldg:', 'parcel ')}
                   </p>
                 )}

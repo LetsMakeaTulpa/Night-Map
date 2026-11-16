@@ -189,6 +189,7 @@ export type ObservationType =
   | 'popos_observation'
   | 'entrance_observation'
   | 'stairs_ramp_observation'
+  | 'building_verification'
   | 'follow_up'
   | 'other';
 
@@ -448,6 +449,10 @@ export interface Settings {
   backgroundLocation: false;
   units: 'metric' | 'imperial';
   showCoverageNote: boolean;
+  /** Selected map-radius limit in metres. Persisted across reloads. */
+  vicinityRadius: number;
+  /** How many essential records remain visible beyond the radius. */
+  outsideLimit: number;
 }
 
 export interface LayerView {

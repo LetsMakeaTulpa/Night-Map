@@ -7,6 +7,7 @@ import { clearDraft, loadDraft, saveDraft } from '../../services/storage';
 import { formatDate } from '../../domain/status';
 
 const TYPES: { id: ObservationType; label: string }[] = [
+  { id: 'building_verification', label: 'Field verification' },
   { id: 'passage_discovery', label: 'Passage or cut-through' },
   { id: 'popos_observation', label: 'POPOS or public space candidate' },
   { id: 'entrance_observation', label: 'Entrance or access point' },
@@ -58,7 +59,10 @@ const nowLocal = () => {
 
 export function FieldnoteComposer({ target, existing, onDone, onCancel }: Props) {
   const { actions } = useStore();
-  const [type, setType] = useState<ObservationType>(existing?.type ?? 'passage_discovery');
+  const buildingId = target.buildingId ?? existing?.buildingId ?? null;
+  const [type, setType] = useState<ObservationType>(
+    existing?.type ?? (buildingId ? 'building_verification' : 'passage_discovery'),
+  );
   const [note, setNote] = useState(existing?.note ?? '');
   const [observedAt, setObservedAt] = useState(
     existing ? existing.observedAt.slice(0, 16) : nowLocal(),
@@ -67,7 +71,6 @@ export function FieldnoteComposer({ target, existing, onDone, onCancel }: Props)
   const [accessStatus, setAccessStatus] = useState<NonNullable<Observation['accessStatus']>>(existing?.accessStatus ?? 'unknown');
   const [sourceReference, setSourceReference] = useState(existing?.sourceReference ?? '');
   const [confidence, setConfidence] = useState<NonNullable<Observation['confidence']>>(existing?.confidence ?? 'unverified');
-  const buildingId = target.buildingId ?? existing?.buildingId ?? null;
   const [buildingCondition, setBuildingCondition] = useState<BuildingCondition | 'unset'>(
     existing?.buildingCondition ?? 'unset',
   );
@@ -169,7 +172,10 @@ export function FieldnoteComposer({ target, existing, onDone, onCancel }: Props)
     onDone();
   };
 
-  const verb = existing ? 'Save changes' : 'Save private note';
+  const verb = existing ? 'Save changes' : buildingId ? 'Save private verification' : 'Save private note';
+  const visibleTypes = buildingId
+    ? TYPES
+    : TYPES.filter((entry) => entry.id !== 'building_verification');
 
   return (
     <form
@@ -181,11 +187,13 @@ export function FieldnoteComposer({ target, existing, onDone, onCancel }: Props)
     >
       <div className="composer-head">
         <div>
-          <p className="eyebrow">{existing ? 'Edit field note' : 'New field note'}</p>
+          <p className="eyebrow">
+            {existing ? 'Edit' : 'New'} {buildingId ? 'private field verification' : 'field note'}
+          </p>
           <h3>{target.placeName ?? 'Pinned observation'}</h3>
           {buildingId && (
             <p className="muted small">
-              Condition check on a registry parcel. Private to this device; it does not change the City record.
+              Private field verification on a registry parcel. Kept on this device beside the City record, which it never changes.
             </p>
           )}
           {target.coordinates && (
@@ -203,7 +211,7 @@ export function FieldnoteComposer({ target, existing, onDone, onCancel }: Props)
       <fieldset className="field">
         <legend>What did you observe?</legend>
         <div className="chip-grid">
-          {TYPES.map((t) => (
+          {visibleTypes.map((t) => (
             <button
               key={t.id}
               type="button"
@@ -279,7 +287,7 @@ export function FieldnoteComposer({ target, existing, onDone, onCancel }: Props)
 
       <div className="field-row">
         <label className="field">
-          <span>When did you observe this?</span>
+          <span>{buildingId ? 'Date and time of verification' : 'When did you observe this?'}</span>
           <input type="datetime-local" value={observedAt} onChange={(e) => setObservedAt(e.target.value)} />
         </label>
         <div className="field">
@@ -294,7 +302,7 @@ export function FieldnoteComposer({ target, existing, onDone, onCancel }: Props)
       </div>
 
       <div className="field">
-        <span>Photo (optional)</span>
+        <span>{buildingId ? 'Verification photo (optional)' : 'Photo (optional)'}</span>
         {photo ? (
           <div className="photo-preview">
             <img src={photo.dataUrl} alt="Attached field observation" />

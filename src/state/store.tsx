@@ -125,6 +125,8 @@ const initialSettings: Settings = {
   backgroundLocation: false,
   units: 'metric',
   showCoverageNote: true,
+  vicinityRadius: 0,
+  outsideLimit: 25,
 };
 
 const initialLayers = Object.fromEntries(LAYERS.map((l) => [l.id, l.defaultVisible])) as Record<string, boolean>;
@@ -273,6 +275,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const toastTimer = useRef<number | null>(null);
   const locationWatch = useRef<number | null>(null);
   const gpsFirstFix = useRef(false);
+  const settingsRef = useRef<Settings>(initialSettings);
 
   useEffect(() => {
     let cancelled = false;
@@ -290,11 +293,13 @@ export function AppProvider({ children }: { children: ReactNode }) {
           loadChanges(),
         ]);
       if (cancelled) return;
+      const hydratedSettings = { ...settingsRef.current, ...(settings ?? {}) };
+      settingsRef.current = hydratedSettings;
       setState((s) => ({
         ...s,
         hydrated: true,
         storageMode,
-        settings: { ...s.settings, ...(settings ?? {}) },
+        settings: hydratedSettings,
         saved,
         observations: observations.sort((a, b) => b.observedAt.localeCompare(a.observedAt)),
         collections,
@@ -342,16 +347,18 @@ export function AppProvider({ children }: { children: ReactNode }) {
         accuracy: position.coords.accuracy,
         at: Date.now(),
       };
+      const grantedSettings = { ...settingsRef.current, locationPermission: 'granted' as const };
+      settingsRef.current = grantedSettings;
       setState((s) => ({
         ...s,
         userLocation: location,
         gpsLocked: true,
         reference: { coordinates: location.coordinates, label: 'Your live location' },
-        settings: { ...s.settings, locationPermission: 'granted' },
+        settings: grantedSettings,
       }));
       if (gpsFirstFix.current) {
         gpsFirstFix.current = false;
-        void saveSettings({ ...state.settings, locationPermission: 'granted' });
+        void saveSettings(grantedSettings);
         notify(`GPS lock on · ±${Math.round(location.accuracy)} m. The map will follow this device until you drag it.`, 'success');
       }
     };
@@ -590,7 +597,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
           input.suggestedCategory
             ? 'Missing-place lead saved privately. It does not create a public record or change City data.'
             : input.buildingId
-              ? 'Condition check saved privately. It sits beside the City records on this device; it does not change them.'
+              ? 'Field verification saved privately. It sits beside the City records on this device; it does not change them.'
               : 'Field note saved privately on this device.',
           'success',
         );
@@ -976,11 +983,13 @@ export function AppProvider({ children }: { children: ReactNode }) {
                 accuracy: position.coords.accuracy,
                 at: Date.now(),
               };
+              const grantedSettings = { ...settingsRef.current, locationPermission: 'granted' as const };
+              settingsRef.current = grantedSettings;
               setState((s) => ({
                 ...s,
                 userLocation: location,
                 reference: { coordinates: location.coordinates, label: 'Your location (this session only)' },
-                settings: { ...s.settings, locationPermission: 'granted' },
+                settings: grantedSettings,
                 route: {
                   ...s.route,
                   origin:
@@ -990,7 +999,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
                   picking: null,
                 },
               }));
-              void saveSettings({ ...state.settings, locationPermission: 'granted' });
+              void saveSettings(grantedSettings);
               notify(`Location fixed to ±${Math.round(location.accuracy)} m. Not saved or shared.`, 'success');
               resolve();
             },
@@ -1079,9 +1088,13 @@ export function AppProvider({ children }: { children: ReactNode }) {
       },
 
       setSettings: async (patch) => {
-        const next = { ...state.settings, ...patch };
-        await saveSettings(next);
+        // Merge against the latest values, not a render-time snapshot: two
+        // controls can change in the same tick, and the second must not undo
+        // the first persisted choice.
+        const next = { ...settingsRef.current, ...patch };
+        settingsRef.current = next;
         setState((s) => ({ ...s, settings: next }));
+        await saveSettings(next);
       },
 
       toggleCompare: (placeId) =>

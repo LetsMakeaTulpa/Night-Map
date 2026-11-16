@@ -555,6 +555,15 @@ body.is-resizing {
   overflow: hidden;
 }
 
+/* Full-screen map: covers the app header, sheet and side panels without
+   unmounting them, so returning restores the previous workspace. */
+.map-stage.is-expanded {
+  position: fixed;
+  inset: 0;
+  z-index: 90;
+  background: var(--ink-1);
+}
+
 .map-stage > .map-canvas,
 .map-canvas.maplibregl-map {
   position: absolute;
@@ -1313,52 +1322,37 @@ body.is-resizing {
 
 .float-panel.panel-left {
   left: 12px;
-  animation: float-panel-from-left 0.22s ease-out both;
+  --panel-edge-shift: -36px;
+  animation: float-panel-in 0.18s cubic-bezier(0.22, 1, 0.36, 1) both;
 }
 
 .float-panel.panel-right {
   right: 12px;
   width: 432px;
-  animation: float-panel-from-right 0.22s ease-out both;
+  --panel-edge-shift: 36px;
+  animation: float-panel-in 0.18s cubic-bezier(0.22, 1, 0.36, 1) both;
 }
 
 .float-panel.is-closing {
   pointer-events: none;
 }
 
-.float-panel.is-closing.panel-left {
-  animation: float-panel-out-left 0.18s ease-in both;
-}
-
+.float-panel.is-closing.panel-left,
 .float-panel.is-closing.panel-right {
-  animation: float-panel-out-right 0.18s ease-in both;
+  animation: float-panel-out 0.18s ease-in both;
 }
 
-@keyframes float-panel-from-left {
+@keyframes float-panel-in {
   from {
     opacity: 0;
-    transform: translateX(-18px);
+    transform: translateX(var(--panel-edge-shift));
   }
 }
 
-@keyframes float-panel-from-right {
-  from {
-    opacity: 0;
-    transform: translateX(18px);
-  }
-}
-
-@keyframes float-panel-out-left {
+@keyframes float-panel-out {
   to {
     opacity: 0;
-    transform: translateX(-18px);
-  }
-}
-
-@keyframes float-panel-out-right {
-  to {
-    opacity: 0;
-    transform: translateX(18px);
+    transform: translateX(var(--panel-edge-shift));
   }
 }
 
@@ -1513,7 +1507,7 @@ body.is-resizing {
 .app-mobile .mobile-top {
   flex: none;
   display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
+  grid-template-columns: auto minmax(0, 1fr) auto;
   align-items: center;
   gap: 7px 10px;
   padding: 8px 12px 7px;
@@ -1535,7 +1529,12 @@ body.is-resizing {
 .mobile-workspace {
   display: inline-flex;
   align-items: center;
+  justify-self: start;
   gap: 6px;
+  min-width: 0;
+  max-width: 100%;
+  overflow: hidden;
+  white-space: nowrap;
   padding: 2px 3px 2px 9px;
   border: var(--border-w-soft) solid var(--line);
   border-radius: 999px;
@@ -1551,8 +1550,11 @@ body.is-resizing {
 }
 
 .mobile-workspace strong {
+  min-width: 0;
+  overflow: hidden;
   font-weight: 600;
   color: var(--accent);
+  text-overflow: ellipsis;
 }
 
 .mobile-workspace-close {
@@ -1577,7 +1579,28 @@ body.is-resizing {
   margin-left: auto;
   display: flex;
   align-items: center;
+  justify-self: end;
   gap: 6px;
+}
+
+@media (max-width: 480px) {
+  .app-mobile .mobile-top {
+    gap: 6px 8px;
+  }
+
+  .mobile-workspace .eyebrow {
+    display: none;
+  }
+
+  .mobile-workspace {
+    padding-left: 8px;
+  }
+}
+
+@media (max-width: 380px) {
+  .app-mobile .brand-name {
+    display: none;
+  }
 }
 
 .app-mobile .mobile-top-actions .map-control {
@@ -2734,6 +2757,10 @@ body.is-resizing {
   display: none;
 }
 
+.app-mobile .sheet.sheet-collapsed .sheet-scroll {
+  display: none;
+}
+
 .app-mobile .sheet.is-dragging {
   transition: none;
 }
@@ -2763,18 +2790,21 @@ body.is-resizing {
 
 .sheet-collapsed-title {
   display: flex;
-  align-items: baseline;
-  gap: 8px;
+  align-items: center;
+  justify-content: center;
+  min-width: 0;
   max-width: 100%;
+  padding-inline: 4px;
   overflow: hidden;
   white-space: nowrap;
   font-size: 12px;
+  line-height: 1.25;
 }
 
-.sheet-collapsed-title span {
+.sheet-collapsed-title strong {
+  min-width: 0;
   overflow: hidden;
-  color: var(--muted);
-  font-size: 11px;
+  font-weight: 600;
   text-overflow: ellipsis;
 }
 

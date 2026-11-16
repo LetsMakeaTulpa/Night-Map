@@ -3,10 +3,10 @@ import { haversineMeters, type LngLat } from '../domain/geo';
 import type { CategoryId } from '../domain/types';
 import type { PlaceView } from '../state/selectors';
 
-/** A short walk, not the whole city. Toggleable in the map's radius panel. */
-export const DEFAULT_VICINITY_RADIUS_M = 600;
+/** 0 means load the visible screen field, with no fixed minimum radius. */
+export const DEFAULT_VICINITY_RADIUS_M = 0;
 
-export const VICINITY_RADIUS_OPTIONS = [300, 600, 1200, 2000] as const;
+export const VICINITY_RADIUS_OPTIONS = [0, 300, 600, 1200, 2000] as const;
 
 /** How many out-of-radius records stay on the map as context. */
 export const OUTSIDE_LIMIT_OPTIONS = [0, 10, 25, 50] as const;

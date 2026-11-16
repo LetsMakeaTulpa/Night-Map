@@ -271,7 +271,7 @@ export function AppShell() {
 
   const sheetHeights = {
     dismissed: 0,
-    collapsed: 104,
+    collapsed: 48,
     peek: Math.round((typeof window === 'undefined' ? 800 : window.innerHeight) * 0.46),
     expanded: Math.round((typeof window === 'undefined' ? 800 : window.innerHeight) * 0.86),
   };
@@ -755,6 +755,32 @@ export function AppShell() {
           </svg>
           <span className="brand-name">Night Map</span>
         </div>
+        <span
+          className="mobile-workspace"
+          role="status"
+          aria-live="polite"
+          aria-label={`Active workspace: ${activeWorkspaceLabel}`}
+          data-testid="mobile-workspace"
+        >
+          <span className="eyebrow">Workspace</span>
+          <strong>{activeWorkspaceLabel}</strong>
+          <button
+            type="button"
+            className="mobile-workspace-close"
+            onClick={() => {
+              if (mobileCanClose) closeMobilePanels();
+              else actions.setSheet('dismissed');
+            }}
+            aria-label={
+              mobileCanClose
+                ? `Close ${activeWorkspaceLabel} and return to the map`
+                : 'Dismiss the nearby panel'
+            }
+            title={mobileCanClose ? 'Return to the map' : 'Dismiss the panel'}
+          >
+            ×
+          </button>
+        </span>
         <div className="mobile-top-actions">
           <button type="button" className="map-control" onClick={() => setSearchOpen(true)} aria-label="Search">
             <svg viewBox="0 0 24 24" aria-hidden="true">
@@ -792,20 +818,6 @@ export function AppShell() {
           </button>
         </div>
         <div className="mobile-status">
-          <span className="mobile-workspace" role="status" aria-live="polite">
-            <span className="eyebrow">Workspace</span>
-            <strong>{activeWorkspaceLabel}</strong>
-            {mobileCanClose && (
-              <button
-                type="button"
-                className="mobile-workspace-close"
-                onClick={closeMobilePanels}
-                aria-label={`Close ${activeWorkspaceLabel} and return to the map`}
-              >
-                ×
-              </button>
-            )}
-          </span>
           {!online && <span className="offline-chip">Offline · saved data</span>}
           {online && <span className="online-chip">Field release · {dataset.data.meta.counts.places} records</span>}
           <span className="privacy-chip">No account · no tracking</span>
@@ -850,16 +862,9 @@ export function AppShell() {
         >
           <span />
           <span className="sheet-grip" aria-hidden="true" />
-          {state.sheet === 'collapsed' && selectedPlace && (
+          {state.sheet === 'collapsed' && (
             <div className="sheet-collapsed-title">
-              <strong>{selectedPlace.name}</strong>
-              <span>{selectedPlace.address}</span>
-            </div>
-          )}
-          {state.sheet === 'collapsed' && !selectedPlace && (
-            <div className="sheet-collapsed-title">
-              <strong>Nearby</strong>
-              <span>{views.length} records pass the current filters</span>
+              <strong>{selectedPlace?.name ?? 'Nearby'}</strong>
             </div>
           )}
         </div>

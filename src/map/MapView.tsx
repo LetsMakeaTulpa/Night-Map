@@ -74,6 +74,24 @@ const MAP_PADDING = () => {
   return { top: 76, bottom: desktop ? 76 : 240, left: desktop ? 348 : 24, right: desktop ? 424 : 24 };
 };
 
+/** Radius from the map centre that still covers every corner of the canvas. */
+function viewportRadiusMeters(map: MapLibreMap): number {
+  const center = map.getCenter();
+  const bounds = map.getBounds();
+  const corners: [number, number][] = [
+    [bounds.getWest(), bounds.getNorth()],
+    [bounds.getEast(), bounds.getNorth()],
+    [bounds.getWest(), bounds.getSouth()],
+    [bounds.getEast(), bounds.getSouth()],
+  ];
+  const radius = Math.max(
+    ...corners.map((corner) => haversineMeters([center.lng, center.lat], corner)),
+  );
+  return Math.max(100, radius * 1.2);
+}
+
+/** Street-scale default: a block should take real scrolling to cross. */
+const STREET_ZOOM = 17.2;
 const TERRAIN_SOURCE_ID = 'terrain';
 /**
  * Deliberate vertical exaggeration. San Francisco's hills are real but gentle at
@@ -100,6 +118,7 @@ export function MapView({ views, onOpenLayers, onLiveCountsChange, onAddMissingP
   const minimapContainerRef = useRef<HTMLDivElement | null>(null);
   const miniMapRef = useRef<MapLibreMap | null>(null);
   const [minimapOpen, setMinimapOpen] = useState(true);
+  const [mapExpanded, setMapExpanded] = useState(false);
   const [ready, setReady] = useState(false);
   const [mapError, setMapError] = useState<string | null>(null);
   const [legendOpen, setLegendOpen] = useState(false);
@@ -123,8 +142,11 @@ export function MapView({ views, onOpenLayers, onLiveCountsChange, onAddMissingP
   const [missingPlacePicking, setMissingPlacePicking] = useState(false);
   const [vicinityOpen, setVicinityOpen] = useState(false);
   const [vicinityOn, setVicinityOn] = useState(true);
-  const [vicinityRadius, setVicinityRadius] = useState<number>(DEFAULT_VICINITY_RADIUS_M);
-  const [outsideLimit, setOutsideLimit] = useState<OutsideLimit>(25);
+  const vicinityRadius =
+    VICINITY_RADIUS_OPTIONS.find((option) => option === state.settings.vicinityRadius) ??
+    DEFAULT_VICINITY_RADIUS_M;
+  const outsideLimit: OutsideLimit =
+    OUTSIDE_LIMIT_OPTIONS.find((option) => option === state.settings.outsideLimit) ?? 25;
   const [visiblePoiCount, setVisiblePoiCount] = useState(views.length);
   const [visibleStopCount, setVisibleStopCount] = useState(0);
   const abandonedOn = Boolean(state.layers['abandoned-buildings']);
@@ -177,9 +199,9 @@ export function MapView({ views, onOpenLayers, onLiveCountsChange, onAddMissingP
         container: containerRef.current,
         style: buildStyle(),
         center: [-122.4085, 37.7835],
-        zoom: 14.1,
+        zoom: STREET_ZOOM,
         minZoom: 11.4,
-        maxZoom: 18.5,
+        maxZoom: 19,
         maxBounds: [
           [-122.475, 37.735],
           [-122.345, 37.82],
@@ -254,6 +276,23 @@ export function MapView({ views, onOpenLayers, onLiveCountsChange, onAddMissingP
       mapRef.current = null;
     };
   }, []);
+
+  // Expanding the map covers the app chrome, so the canvas must be told its
+  // container changed size after the fixed layer has laid out.
+  useEffect(() => {
+    if (!ready) return;
+    const frame = requestAnimationFrame(() => mapRef.current?.resize());
+    return () => cancelAnimationFrame(frame);
+  }, [mapExpanded, ready]);
+
+  useEffect(() => {
+    if (!mapExpanded) return;
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') setMapExpanded(false);
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [mapExpanded]);
 
   // A corner overview built from the same local geometry. Clicking recenters;
   // dragging moves the viewport continuously. It has no labels or terrain of
@@ -421,8 +460,12 @@ export function MapView({ views, onOpenLayers, onLiveCountsChange, onAddMissingP
     const apply = () => {
       if (disposed) return;
       const center = map.getCenter();
+      // Cover the whole visible field, not a fixed circle around its centre.
+      // A 20% margin keeps records ready just beyond the edge while panning.
+      const screenRadius = viewportRadiusMeters(map);
+      const effectiveRadius = Math.max(vicinityRadius, screenRadius);
       const shown = vicinityOn
-        ? vicinityViews(views, [center.lng, center.lat], vicinityRadius, outsideLimit)
+        ? vicinityViews(views, [center.lng, center.lat], effectiveRadius, outsideLimit)
         : views;
       const features = shown.map((view) => ({
         type: 'Feature' as const,
@@ -443,14 +486,14 @@ export function MapView({ views, onOpenLayers, onLiveCountsChange, onAddMissingP
         vicinityOn
           ? {
               type: 'FeatureCollection',
-              features: [circlePolygon([center.lng, center.lat], vicinityRadius)],
+              features: [circlePolygon([center.lng, center.lat], effectiveRadius)],
             }
           : EMPTY_FC,
       );
       const shownStops = vicinityOn
         ? dataset.data.transit.filter(
             (stop) =>
-              haversineMeters([center.lng, center.lat], stop.geometry.coordinates) <= vicinityRadius,
+              haversineMeters([center.lng, center.lat], stop.geometry.coordinates) <= effectiveRadius,
           )
         : dataset.data.transit;
       (map.getSource('stops') as maplibregl.GeoJSONSource | undefined)?.setData({
@@ -466,7 +509,7 @@ export function MapView({ views, onOpenLayers, onLiveCountsChange, onAddMissingP
           ? vicinityOn
             ? abandonedFile.dossiers.filter(
                 (dossier) =>
-                  haversineMeters([center.lng, center.lat], dossier.coordinates) <= vicinityRadius,
+                  haversineMeters([center.lng, center.lat], dossier.coordinates) <= effectiveRadius,
               )
             : abandonedFile.dossiers
           : [];
@@ -487,10 +530,14 @@ export function MapView({ views, onOpenLayers, onLiveCountsChange, onAddMissingP
       setVisibleStopCount(shownStops.length);
     };
     apply();
-    if (vicinityOn) map.on('moveend', apply);
+    if (vicinityOn) {
+      map.on('moveend', apply);
+      map.on('resize', apply);
+    }
     return () => {
       disposed = true;
       map.off('moveend', apply);
+      map.off('resize', apply);
     };
   }, [views, ready, vicinityOn, vicinityRadius, outsideLimit, abandonedOn, abandonedFile]);
 
@@ -578,7 +625,7 @@ export function MapView({ views, onOpenLayers, onLiveCountsChange, onAddMissingP
         (b, c) => b.extend(c as [number, number]),
         new maplibregl.LngLatBounds(plan.geometry.coordinates[0], plan.geometry.coordinates[0]),
       );
-      map.fitBounds(bounds, { padding: MAP_PADDING(), maxZoom: 16.5, duration: 600 });
+      map.fitBounds(bounds, { padding: MAP_PADDING(), maxZoom: STREET_ZOOM, duration: 600 });
     }
   }, [state.route.plan, state.route.stops, ready]);
 
@@ -1121,7 +1168,7 @@ export function MapView({ views, onOpenLayers, onLiveCountsChange, onAddMissingP
       map.stop();
       map.flyTo({
         center: detail.coordinates,
-        zoom: Math.max(map.getZoom(), 16),
+        zoom: Math.max(map.getZoom(), STREET_ZOOM),
         pitch: Math.max(52, startPitch),
         bearing,
         padding: MAP_PADDING(),
@@ -1155,7 +1202,7 @@ export function MapView({ views, onOpenLayers, onLiveCountsChange, onAddMissingP
     if (!coordinates) return;
     map.easeTo({
       center: coordinates,
-      zoom: Math.max(map.getZoom(), 16),
+      zoom: Math.max(map.getZoom(), STREET_ZOOM),
       padding: MAP_PADDING(),
       duration: 700,
     });
@@ -1169,7 +1216,7 @@ export function MapView({ views, onOpenLayers, onLiveCountsChange, onAddMissingP
     const fly = (coordinates: [number, number]) => {
       map.easeTo({
         center: coordinates,
-        zoom: Math.max(map.getZoom(), 16.2),
+        zoom: Math.max(map.getZoom(), STREET_ZOOM),
         padding: MAP_PADDING(),
         duration: 700,
       });
@@ -1234,7 +1281,7 @@ export function MapView({ views, onOpenLayers, onLiveCountsChange, onAddMissingP
     gpsFirstFollow.current = false;
     map.easeTo({
       center: state.userLocation.coordinates,
-      zoom: first ? Math.max(map.getZoom(), 16) : undefined,
+      zoom: first ? Math.max(map.getZoom(), STREET_ZOOM) : undefined,
       padding: MAP_PADDING(),
       duration: first ? 650 : 400,
     });
@@ -1256,7 +1303,7 @@ export function MapView({ views, onOpenLayers, onLiveCountsChange, onAddMissingP
     const map = mapRef.current;
     if (!map) return;
     const center = state.userLocation?.coordinates ?? [-122.4085, 37.7835];
-    map.easeTo({ center, zoom: state.userLocation ? 16 : 14.1, padding: MAP_PADDING(), duration: 600 });
+    map.easeTo({ center, zoom: STREET_ZOOM, padding: MAP_PADDING(), duration: 600 });
   };
 
   const is3d = camera.pitch > 4;
@@ -1317,8 +1364,15 @@ export function MapView({ views, onOpenLayers, onLiveCountsChange, onAddMissingP
 
   const resetNorth = () => moveCamera({ pitch: 0, bearing: 0 });
 
+  const rotateBy = (degrees: number) => {
+    const map = mapRef.current;
+    if (!map) return;
+    const bearing = ((map.getBearing() + degrees) % 360 + 360) % 360;
+    map.easeTo({ bearing, duration: 350 });
+  };
+
   return (
-    <div className={`map-stage ${minimapOpen ? 'has-minimap' : ''}`}>
+    <div className={`map-stage ${minimapOpen ? 'has-minimap' : ''} ${mapExpanded ? 'is-expanded' : ''}`}>
       <div ref={containerRef} className="map-canvas" role="application" aria-label="Night Map of central San Francisco" />
 
       {mapError && (
@@ -1335,12 +1389,18 @@ export function MapView({ views, onOpenLayers, onLiveCountsChange, onAddMissingP
           data-testid="poi-count"
           title={
             vicinityOn
-              ? `Every record within ${formatDistance(vicinityRadius)} of the map centre, plus up to ${outsideLimit} essential records beyond it. Saved places rank first.`
+              ? vicinityRadius === 0
+                ? `Only the visible screen field is loaded, plus up to ${outsideLimit} essential records beyond it. Saved places rank first.`
+                : `At least ${formatDistance(vicinityRadius)} around the map centre is preloaded, plus up to ${outsideLimit} essential records beyond it. Saved places rank first.`
               : 'Radius limit off: every record passing the current filters is on the map.'
           }
         >
           {visiblePoiCount} of {views.length} {recordWord} · {visibleStopCount} stops
-          {vicinityOn ? ` · ${formatDistance(vicinityRadius)} radius` : ' · full area'}
+          {vicinityOn
+            ? vicinityRadius === 0
+              ? ' · screen field'
+              : ` · ${formatDistance(vicinityRadius)} preload`
+            : ' · full area'}
         </span>
         {is3d && (
           <span className="map-scale-note is-3d">
@@ -1439,7 +1499,7 @@ export function MapView({ views, onOpenLayers, onLiveCountsChange, onAddMissingP
           onClose={() => setStreetOpen(false)}
           onCenter={(coordinates) => {
             const map = mapRef.current;
-            map?.easeTo({ center: coordinates, zoom: Math.max(map.getZoom(), 17), duration: 600 });
+            map?.easeTo({ center: coordinates, zoom: Math.max(map.getZoom(), STREET_ZOOM), duration: 600 });
           }}
         />
       )}
@@ -1463,6 +1523,24 @@ export function MapView({ views, onOpenLayers, onLiveCountsChange, onAddMissingP
           title="Face north, top-down"
         >
           <CompassIcon bearing={camera.bearing} />
+        </button>
+        <button
+          type="button"
+          className="map-control"
+          onClick={() => rotateBy(-45)}
+          aria-label="Rotate map left"
+          title="Rotate the view 45° left"
+        >
+          <RotateIcon direction="left" />
+        </button>
+        <button
+          type="button"
+          className="map-control"
+          onClick={() => rotateBy(45)}
+          aria-label="Rotate map right"
+          title="Rotate the view 45° right"
+        >
+          <RotateIcon direction="right" />
         </button>
         <button
           type="button"
@@ -1556,6 +1634,16 @@ export function MapView({ views, onOpenLayers, onLiveCountsChange, onAddMissingP
             <path d="M3.5 9.5h17M9 4.5v15" />
           </svg>
         </button>
+        <button
+          type="button"
+          className={`map-control ${mapExpanded ? 'is-active' : ''}`}
+          onClick={() => setMapExpanded((expanded) => !expanded)}
+          aria-pressed={mapExpanded}
+          aria-label={mapExpanded ? 'Exit full-screen map' : 'Expand map to full screen'}
+          title={mapExpanded ? 'Exit full-screen map (Esc)' : 'Expand the map over the app chrome'}
+        >
+          <ExpandIcon expanded={mapExpanded} />
+        </button>
         <div className="map-control-group">
           <button type="button" className="map-control" onClick={() => mapRef.current?.zoomIn()} aria-label="Zoom in">
             +
@@ -1595,18 +1683,22 @@ export function MapView({ views, onOpenLayers, onLiveCountsChange, onAddMissingP
               checked={vicinityOn}
               onChange={(event) => setVicinityOn(event.target.checked)}
             />
-            <span>Limit the map to a nearby radius</span>
+            <span>Keep only what can appear on screen</span>
           </label>
           <label className="field">
-            <span>Radius from map centre</span>
+            <span>Minimum preload around the view</span>
             <select
               value={vicinityRadius}
               disabled={!vicinityOn}
-              onChange={(event) => setVicinityRadius(Number(event.target.value))}
+              onChange={(event) => {
+                const value = Number(event.target.value);
+                const option = VICINITY_RADIUS_OPTIONS.find((entry) => entry === value);
+                if (option !== undefined) void actions.setSettings({ vicinityRadius: option });
+              }}
             >
               {VICINITY_RADIUS_OPTIONS.map((metres) => (
                 <option key={metres} value={metres}>
-                  {formatDistance(metres)}
+                  {metres === 0 ? 'Screen field only' : formatDistance(metres)}
                 </option>
               ))}
             </select>
@@ -1616,7 +1708,11 @@ export function MapView({ views, onOpenLayers, onLiveCountsChange, onAddMissingP
             <select
               value={outsideLimit}
               disabled={!vicinityOn}
-              onChange={(event) => setOutsideLimit(Number(event.target.value) as OutsideLimit)}
+              onChange={(event) => {
+                const value = Number(event.target.value);
+                const option = OUTSIDE_LIMIT_OPTIONS.find((entry) => entry === value);
+                if (option !== undefined) void actions.setSettings({ outsideLimit: option });
+              }}
             >
               {OUTSIDE_LIMIT_OPTIONS.map((limit) => (
                 <option key={limit} value={limit}>
@@ -1626,10 +1722,11 @@ export function MapView({ views, onOpenLayers, onLiveCountsChange, onAddMissingP
             </select>
           </label>
           <p className="field-foot">
-            Every record inside the ring stays. Beyond it, saved places rank first, then drinking water,
-            restrooms, food, shelter, medical, services and charging — nearest first. Transit stops and
-            vacancy markers follow the same ring. This limits what is drawn, not what the filters count or
-            what search can find.
+            The loaded area follows the screen, so zooming out or expanding the map grows it automatically
+            and nothing visible is left blank. A larger minimum preloads extra records beyond the edge.
+            Beyond the loaded field, saved places rank first, then drinking water, restrooms, food, shelter,
+            medical, services and charging. Transit stops and vacancy markers follow the same field. This
+            limits what is drawn, not what the filters count or what search can find.
           </p>
         </div>
       )}
@@ -1797,6 +1894,27 @@ function CubeIcon() {
     <svg viewBox="0 0 24 24" aria-hidden="true">
       <path d="M12 3.2 20 7.6v8.8L12 20.8 4 16.4V7.6Z" />
       <path d="M4 7.6 12 12l8-4.4M12 12v8.8" />
+    </svg>
+  );
+}
+
+function ExpandIcon({ expanded }: { expanded: boolean }) {
+  return (
+    <svg viewBox="0 0 24 24" aria-hidden="true">
+      {expanded ? (
+        <path d="M9 4v5H4M15 4v5h5M9 20v-5H4M15 20v-5h5" />
+      ) : (
+        <path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5" />
+      )}
+    </svg>
+  );
+}
+
+function RotateIcon({ direction }: { direction: 'left' | 'right' }) {
+  return (
+    <svg viewBox="0 0 24 24" aria-hidden="true" style={direction === 'left' ? { transform: 'scaleX(-1)' } : undefined}>
+      <path d="M19 8.5A8 8 0 1 0 20 14" />
+      <path d="M19 3.5v5h-5" />
     </svg>
   );
 }
