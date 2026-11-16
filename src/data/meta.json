@@ -11,12 +11,11 @@
   "note": "This release covers a central slice of San Francisco. It is not a citywide or complete directory."
  },
  "counts": {
-  "places": 248,
-  "historicFeatures": 72,
+  "places": 176,
   "popos": 81,
   "resources": 177,
   "transitStops": 605,
-  "sources": 29
+  "sources": 31
  },
  "coverageNote": "Records come from a City asset inventory, a transit stop inventory and a small number of provider pages read by hand. Many categories have no records yet; the app says so instead of filling the gap."
 }

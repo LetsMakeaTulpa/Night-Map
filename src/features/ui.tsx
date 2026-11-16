@@ -153,9 +153,9 @@ export function useOnline(): boolean {
 }
 
 export function useDesktop(): boolean {
-  const [desktop, setDesktop] = useState(() => (typeof window === 'undefined' ? true : window.innerWidth >= 1000));
+  const [desktop, setDesktop] = useState(() => (typeof window === 'undefined' ? true : window.innerWidth >= 960));
   useEffect(() => {
-    const query = window.matchMedia('(min-width: 1000px)');
+    const query = window.matchMedia('(min-width: 960px)');
     const handler = (event: MediaQueryListEvent) => setDesktop(event.matches);
     setDesktop(query.matches);
     query.addEventListener('change', handler);

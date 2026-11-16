@@ -47,7 +47,6 @@ export const placeSchema = z.object({
     'comms',
     'tech',
     'civic',
-    'history',
     'passage',
     'popos',
     'pedestrian_connection',
@@ -221,6 +220,120 @@ export const accessFileSchema = z.object({
   geocodes: z.record(geocodeRecordSchema),
 });
 
+const buildingStatusSchema = z.enum([
+  'reported_vacant',
+  'vacancy_history',
+  'under_demolition',
+  'demolition_history',
+  'under_construction',
+  'code_enforcement',
+  'records_only',
+]);
+
+const buildingCountsSchema = z.object({
+  complaints: z.number().int().min(0),
+  permits: z.number().int().min(0),
+  notices: z.number().int().min(0),
+  vacancyComplaints: z.number().int().min(0),
+  vacancyNotices: z.number().int().min(0),
+  demolitionPermits: z.number().int().min(0),
+  openComplaints: z.number().int().min(0),
+  openNotices: z.number().int().min(0),
+});
+
+const buildingDossierSchema = z.object({
+  // The City's parcel blocks are four digits, sometimes with a letter suffix
+  // (3005B is a real block), so both forms are accepted.
+  id: z.string().regex(/^bldg:\d{4}[A-Z]?-[A-Z0-9]+$/),
+  block: z.string().regex(/^\d{4}[A-Z]?$/),
+  lot: z.string().min(1),
+  parcelNumber: z.string().nullable(),
+  address: z.string().min(1),
+  neighborhood: z.string().nullable(),
+  coordinates: z.tuple([z.number(), z.number()]).nullable(),
+  locationPrecision: z.enum(['permit_primary_address', 'permit', 'notice', 'block_centroid', 'none']),
+  stories: z.number().nullable(),
+  use: z.string().nullable(),
+  permitCount: z.number().int().min(0),
+  complaintCount: z.number().int().min(0),
+  noticeCount: z.number().int().min(0),
+  firstRecordAt: z.string().nullable(),
+  lastRecordAt: z.string().nullable(),
+  complaints: z.array(
+    z.object({
+      id: z.string(),
+      date: z.string().nullable(),
+      description: z.string(),
+      status: z.string(),
+    }),
+  ),
+  notices: z.array(
+    z.object({
+      id: z.string(),
+      date: z.string().nullable(),
+      item: z.string().min(1),
+      category: z.string(),
+      status: z.string(),
+    }),
+  ),
+  permits: z.array(
+    z.object({
+      id: z.string(),
+      type: z.string(),
+      status: z.string(),
+      date: z.string().nullable(),
+      description: z.string(),
+    }),
+  ),
+  status: buildingStatusSchema,
+  confidence: z.enum(['high', 'medium', 'low']),
+  score: z.number().min(0).max(100),
+  counts: buildingCountsSchema,
+  vacancyLatestAt: z.string().nullable(),
+  demolitionLatestAt: z.string().nullable(),
+});
+
+const buildingRegistryMetaShape = {
+  generatedAt: z.string(),
+  sources: z.array(
+    z.object({ id: z.string(), dataset: z.string(), rows: z.number().int().min(0) }),
+  ),
+  footprint: z.object({
+    west: z.number(),
+    south: z.number(),
+    east: z.number(),
+    north: z.number(),
+  }),
+  since: z.string(),
+  newestRecordAt: z.string().nullable(),
+  classificationNote: z.string().min(40),
+  scope: z.string().min(40),
+  limitations: z.array(z.string()).min(3),
+  counts: z.object({
+    dossiers: z.number().int().min(0),
+    withCoordinates: z.number().int().min(0),
+    withParcelPoint: z.number().int().min(0),
+    blockCentroidPlaced: z.number().int().min(0),
+    withoutCoordinates: z.number().int().min(0),
+    excludedStale: z.number().int().min(0),
+    vacancySignalParcels: z.number().int().min(0),
+    demolitionParcels: z.number().int().min(0),
+    permitsRead: z.number().int().min(0),
+    complaintsRead: z.number().int().min(0),
+    noticesRead: z.number().int().min(0),
+    complaintsUnmatched: z.number().int().min(0),
+    byStatus: z.record(z.number().int().min(0)),
+  }),
+};
+
+export const buildingRegistryMetaSchema = z.object(buildingRegistryMetaShape);
+
+/** The on-demand registry file, validated once when it is fetched. */
+export const buildingRegistrySchema = z.object({
+  ...buildingRegistryMetaShape,
+  dossiers: z.array(buildingDossierSchema).min(1),
+});
+
 export const datasetMetaSchema = z.object({
   generatedAt: z.string(),
   footprint: z.object({ name: z.string(), bbox: z.array(z.number()).length(4), note: z.string() }),
@@ -254,6 +367,7 @@ export const observationSchema = z.object({
   placeId: z.string().nullable(),
   placeName: z.string().nullable(),
   geometry: point.nullable(),
+  suggestedCategory: placeSchema.shape.category.optional(),
   type: z.enum([
     'resource_present',
     'resource_not_found',
@@ -263,13 +377,11 @@ export const observationSchema = z.object({
     'access_issue',
     'infrastructure_change',
     'new_resource',
-    'historical_discovery',
     'passage_discovery',
     'popos_observation',
     'entrance_observation',
     'stairs_ramp_observation',
-    'architectural_detail',
-    'research_lead',
+    'building_verification',
     'follow_up',
     'other',
   ]),
@@ -277,6 +389,11 @@ export const observationSchema = z.object({
   observedAt: z.string(),
   recordedAt: z.string(),
   accessStatus: z.enum(['confirmed_public', 'conditional', 'private_restricted', 'temporarily_closed', 'unknown']).optional(),
+  // Optional so notes written before building checks existed still load.
+  buildingId: z.string().min(3).nullable().optional(),
+  buildingCondition: z
+    .enum(['looks_vacant', 'looks_occupied', 'boarded', 'under_construction', 'demolished', 'no_access', 'no_change'])
+    .optional(),
   sourceReference: z.string().max(1000).optional(),
   confidence: z.enum(['documented', 'corroborated', 'inferred', 'disputed', 'unverified']).optional(),
   photo: z

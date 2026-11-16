@@ -4,6 +4,7 @@ import { dataset } from '../../data';
 import { useStore } from '../../state/store';
 import { formatDate } from '../../domain/status';
 import { CATEGORY_BY_ID } from '../../domain/categories';
+import { buildingConditionLabel } from '../../domain/buildings';
 import { EmptyState } from '../ui';
 import { FieldnoteComposer, type ComposeTarget } from './FieldnoteComposer';
 import { searchLocal } from '../../services/search';
@@ -17,13 +18,11 @@ const TYPE_LABELS: Record<string, string> = {
   access_issue: 'Access issue',
   infrastructure_change: 'Infrastructure change',
   new_resource: 'New or changed service',
-  historical_discovery: 'Historical discovery',
   passage_discovery: 'Passage or cut-through',
   popos_observation: 'POPOS or public space candidate',
   entrance_observation: 'Entrance or access point',
   stairs_ramp_observation: 'Stairs, ramp or path',
-  architectural_detail: 'Architectural detail',
-  research_lead: 'Research lead · unverified',
+  building_verification: 'Building field verification',
   follow_up: 'Follow-up needed',
   other: 'Observation',
 };
@@ -40,7 +39,9 @@ export function FieldnotesWorkspace() {
 
   const observations = useMemo(() => {
     return state.observations
-      .filter((o) => (filter === 'linked' ? Boolean(o.placeId) : filter === 'pinned' ? !o.placeId : true))
+      .filter((o) =>
+        filter === 'linked' ? Boolean(o.placeId || o.buildingId) : filter === 'pinned' ? !o.placeId && !o.buildingId : true,
+      )
       .sort((a, b) => b.observedAt.localeCompare(a.observedAt));
   }, [state.observations, filter]);
 
@@ -70,6 +71,7 @@ export function FieldnotesWorkspace() {
             placeId: editing.placeId,
             placeName: editing.placeName,
             coordinates: editing.geometry?.coordinates ?? null,
+            buildingId: editing.buildingId ?? null,
           }}
           existing={editing}
           onDone={() => {
@@ -115,12 +117,9 @@ export function FieldnotesWorkspace() {
               <button
                 type="button"
                 className="button primary"
-                onClick={() => startCompose({ placeId: null, placeName: 'Pinned discovery at map centre', coordinates: state.reference.coordinates })}
+                onClick={() => startCompose({ placeId: null, placeName: 'Pinned note at map centre', coordinates: state.reference.coordinates })}
               >
-                New pinned discovery
-              </button>
-              <button type="button" className="button ghost" onClick={() => startCompose({ placeId: null, placeName: 'Research lead at map centre', coordinates: state.reference.coordinates })}>
-                Add research lead
+                New pinned note
               </button>
             </div>
         )}
@@ -195,49 +194,86 @@ export function FieldnotesWorkspace() {
         </EmptyState>
       ) : (
         <ul className="note-list">
-          {observations.map((observation) => (
-            <li key={observation.id} className="note-card">
-              <div className="note-head">
-                <span className="note-type">{TYPE_LABELS[observation.type] ?? observation.type}</span>
-                <span className="private-lock">Private</span>
-              </div>
-              <h4>{observation.placeName ?? 'Pinned observation'}</h4>
-              <p>{observation.note}</p>
-              {observation.geometry && <p className="muted small">{observation.geometry.coordinates[1].toFixed(5)}, {observation.geometry.coordinates[0].toFixed(5)}</p>}
-              {observation.photo && <img src={observation.photo.dataUrl} alt="Attached field observation" />}
-              {(observation.accessStatus || observation.sourceReference) && (
-                <p className="muted small">
-                  Access: {(observation.accessStatus ?? 'unknown').replaceAll('_', ' ')} · Evidence: {(observation.confidence ?? 'unverified').replaceAll('_', ' ')}
-                  {observation.sourceReference && <> · <a href={observation.sourceReference} target="_blank" rel="noreferrer noopener">Source</a></>}
-                </p>
-              )}
-              <div className="note-foot">
-                <span className="muted small">
-                  Observed {formatDate(observation.observedAt)} · recorded {formatDate(observation.recordedAt)} · unverified
-                </span>
-                <div className="button-row">
-                  {observation.geometry && (
-                    <button type="button" className="link-button" onClick={() => actions.selectObservation(observation.id)}>
-                      Inspect on map
-                    </button>
-                  )}
-                  <button
-                    type="button"
-                    className="link-button"
-                    onClick={() => {
-                      setEditing(observation);
-                      setMode('edit');
-                    }}
-                  >
-                    Edit
-                  </button>
-                  <button type="button" className="link-button" onClick={() => void actions.deleteObservation(observation.id)}>
-                    Delete
-                  </button>
+          {observations.map((observation) => {
+            const suggestion = observation.suggestedCategory
+              ? CATEGORY_BY_ID.get(observation.suggestedCategory)
+              : null;
+            return (
+              <li key={observation.id} className="note-card">
+                <div className="note-head">
+                  <span className="note-type">
+                    {suggestion
+                      ? `Missing place · ${suggestion.short}`
+                      : (TYPE_LABELS[observation.type] ?? observation.type)}
+                  </span>
+                  <span className="private-lock">Private</span>
                 </div>
-              </div>
-            </li>
-          ))}
+                {observation.buildingId && (
+                  <p className="muted small">
+                    Field verification · {buildingConditionLabel(observation.buildingCondition)} ·{' '}
+                    {observation.buildingId.replace('bldg:', 'parcel ')}
+                  </p>
+                )}
+                <h4>{observation.placeName ?? 'Pinned observation'}</h4>
+                <p>{observation.note}</p>
+                {observation.geometry && (
+                  <p className="muted small">
+                    {observation.geometry.coordinates[1].toFixed(5)}, {observation.geometry.coordinates[0].toFixed(5)}
+                  </p>
+                )}
+                {observation.photo && <img src={observation.photo.dataUrl} alt="Attached field observation" />}
+                {(observation.accessStatus || observation.sourceReference) && (
+                  <p className="muted small">
+                    Access: {(observation.accessStatus ?? 'unknown').replaceAll('_', ' ')} · Evidence:{' '}
+                    {(observation.confidence ?? 'unverified').replaceAll('_', ' ')}
+                    {observation.sourceReference && (
+                      <>
+                        {' '}
+                        ·{' '}
+                        <a href={observation.sourceReference} target="_blank" rel="noreferrer noopener">
+                          Source
+                        </a>
+                      </>
+                    )}
+                  </p>
+                )}
+                <div className="note-foot">
+                  <span className="muted small">
+                    Observed {formatDate(observation.observedAt)} · recorded {formatDate(observation.recordedAt)} ·
+                    unverified
+                  </span>
+                  <div className="button-row">
+                    {observation.geometry && (
+                      <button
+                        type="button"
+                        className="link-button"
+                        onClick={() => actions.selectObservation(observation.id)}
+                      >
+                        Inspect on map
+                      </button>
+                    )}
+                    <button
+                      type="button"
+                      className="link-button"
+                      onClick={() => {
+                        setEditing(observation);
+                        setMode('edit');
+                      }}
+                    >
+                      Edit
+                    </button>
+                    <button
+                      type="button"
+                      className="link-button"
+                      onClick={() => void actions.deleteObservation(observation.id)}
+                    >
+                      Delete
+                    </button>
+                  </div>
+                </div>
+              </li>
+            );
+          })}
         </ul>
       )}
     </div>

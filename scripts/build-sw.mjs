@@ -4,6 +4,7 @@
  * fonts and icons. Runs after `vite build`. No network access required.
  */
 import { readFile, readdir, stat, writeFile } from 'node:fs/promises';
+import { createHash } from 'node:crypto';
 import path from 'node:path';
 
 const ROOT = path.resolve(import.meta.dirname, '..');
@@ -37,7 +38,12 @@ const precache = [
 ];
 const onDemandCount = files.filter(onDemand).length;
 const template = await readFile(path.join(ROOT, 'scripts', 'sw-template.js'), 'utf8');
-const output = template.replace('__PRECACHE__', JSON.stringify(precache, null, 2));
+// The shell cache name follows the hashed asset list, so every deployment
+// installs a fresh shell without clearing the stable tile or data caches.
+const buildId = createHash('sha256').update(precache.join('|')).digest('hex').slice(0, 10);
+const output = template
+  .replace('__PRECACHE__', JSON.stringify(precache, null, 2))
+  .replaceAll('__BUILD_ID__', buildId);
 await writeFile(path.join(DIST, 'sw.js'), output);
 console.log(
   `wrote dist/sw.js with ${precache.length} precached entries ` +

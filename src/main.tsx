@@ -6,7 +6,7 @@ import '@fontsource/ibm-plex-sans/600.css';
 import '@fontsource/newsreader/400.css';
 import '@fontsource/newsreader/500.css';
 import './styles/base.css';
-import './styles/panels.css';
+import './styles/buildings.css';
 import { AppProvider } from './state/store';
 import { AppShell } from './features/shell/AppShell';
 

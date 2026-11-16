@@ -1,4 +1,22 @@
-/** Shared Night Map / Atlas domain model. IDs are stable and namespaced. */
+/** Shared Night Map domain model. IDs are stable and namespaced. */
+import type { BuildingCondition } from './building-types';
+export type {
+  AbandonedBuilding,
+  AbandonedBuildingFile,
+  AbandonedBuildingStatus,
+  BuildingComplaint,
+  BuildingCondition,
+  BuildingConfidence,
+  BuildingCounts,
+  BuildingDossier,
+  BuildingLocationPrecision,
+  BuildingNotice,
+  BuildingPermit,
+  BuildingRegistry,
+  BuildingRegistryMeta,
+  BuildingRegistrySource,
+  BuildingStatus,
+} from './building-types';
 
 export type CategoryId =
   | 'food'
@@ -160,6 +178,12 @@ export interface TransitStop {
   sourceUpdatedAt: string | null;
 }
 
+export interface Neighbourhood {
+  name: string;
+  rank: number;
+  geometry: PointGeometry;
+}
+
 export interface Guide {
   id: string;
   title: string;
@@ -173,12 +197,6 @@ export interface Guide {
   limitations: string;
 }
 
-export interface Neighbourhood {
-  name: string;
-  rank: number;
-  geometry: PointGeometry;
-}
-
 export type ObservationType =
   | 'resource_present'
   | 'resource_not_found'
@@ -188,13 +206,14 @@ export type ObservationType =
   | 'access_issue'
   | 'infrastructure_change'
   | 'new_resource'
-  | 'historical_discovery'
   | 'passage_discovery'
   | 'popos_observation'
   | 'entrance_observation'
   | 'stairs_ramp_observation'
+  | 'historical_discovery'
   | 'architectural_detail'
   | 'research_lead'
+  | 'building_verification'
   | 'follow_up'
   | 'other';
 
@@ -213,11 +232,16 @@ export interface Observation {
   placeName: string | null;
   geometry: PointGeometry | null;
   type: ObservationType;
+  /** Set on a private missing-place lead; never presented as a confirmed category. */
+  suggestedCategory?: CategoryId;
   note: string;
   observedAt: string;
   recordedAt: string;
   photo: ObservationPhoto | null;
   accessStatus?: ObservationAccess;
+  /** Set when the observation is a condition check on a registry parcel. */
+  buildingId?: string | null;
+  buildingCondition?: BuildingCondition;
   sourceReference?: string;
   confidence?: 'documented' | 'corroborated' | 'inferred' | 'disputed' | 'unverified';
   visibility: 'private' | 'group' | 'public';
@@ -385,7 +409,17 @@ export interface LayerDefinition {
  * lawful public live camera feed or radio stream for San Francisco, and the app
  * says so where a person would otherwise expect one.
  */
-export type Workspace = 'map' | 'nearby' | 'routes' | 'fieldnotes' | 'atlas' | 'review' | 'cctv' | 'radio';
+export type Workspace =
+  | 'map'
+  | 'nearby'
+  | 'buildings'
+  | 'routes'
+  | 'fieldnotes'
+  | 'library'
+  | 'atlas'
+  | 'review'
+  | 'cctv'
+  | 'radio';
 
 export type DisclosureDocumentType =
   | 'inventory'
@@ -440,6 +474,10 @@ export interface Settings {
   backgroundLocation: false;
   units: 'metric' | 'imperial';
   showCoverageNote: boolean;
+  /** Selected map-radius limit in metres. Persisted across reloads. */
+  vicinityRadius: number;
+  /** How many essential records remain visible beyond the radius. */
+  outsideLimit: number;
 }
 
 export interface LayerView {

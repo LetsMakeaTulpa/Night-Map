@@ -2,8 +2,7 @@ import type { LayerDefinition } from '../domain/types';
 
 /**
  * Every visible map element is a registered layer with metadata: source, update
- * cadence, offline availability and minimum zoom. Historical layers stay
- * subordinate to navigation unless a preset raises them.
+ * cadence, offline availability and minimum zoom.
  */
 export const LAYERS: (LayerDefinition & { defaultOpacity?: number })[] = [
   {
@@ -123,9 +122,9 @@ export const LAYERS: (LayerDefinition & { defaultOpacity?: number })[] = [
   },
   {
     id: 'calls-recent',
-    name: 'Dispatched calls (48 h snapshot)',
+    name: 'Dispatched calls (live, 10-min delay)',
     description:
-      'Police, fire and other dispatched calls that closed within 48 hours of the last data refresh, from the City’s own published CAD extract. A snapshot, not a live feed: no audio, no open calls, and the City’s withheld sensitive calls are absent.',
+      'Police, fire and other dispatched calls from the City’s CAD extract, refreshed every two minutes while this layer is on. The City delays it ten minutes and withholds sensitive calls; open calls are absent and there is no audio. Falls back to the bundled snapshot offline.',
     group: 'context',
     sourceIds: ['src:sfgov-calls-realtime'],
     defaultVisible: false,
@@ -155,14 +154,37 @@ export const LAYERS: (LayerDefinition & { defaultOpacity?: number })[] = [
     minZoom: 13.4,
   },
   {
-    id: 'landmarks',
-    name: 'Historic features',
-    description: 'Named historic features mapped in OpenStreetMap. Names and locations only.',
+    id: 'abandoned-buildings',
+    name: 'Abandoned & vacant buildings',
+    description:
+      'Parcels with a City complaint or notice describing a vacant, abandoned or derelict condition, marked with a blue glow. Only parcels the City placed on the map are plotted; dossiers with no published point stay in the Buildings table. A marker is a record, not a confirmed empty building.',
     group: 'context',
-    sourceIds: ['src:osm-landmarks'],
+    sourceIds: ['src:sfgov-dbi-complaints', 'src:sfgov-dbi-novs'],
+    defaultVisible: true,
+    offline: 'cached_on_demand',
+    minZoom: 11.5,
+  },
+  {
+    id: 'building-registry',
+    name: 'Building registry dossiers',
+    description:
+      'Parcels with a DBI complaint, notice of violation or demolition record describing a vacant, abandoned or derelict condition. A dot is a parcel with City records, not a confirmed empty building; 2,043 dossiers have no position and are table-only, and 64 are placed at a labelled block centroid.',
+    group: 'context',
+    sourceIds: ['src:sfgov-dbi-complaints', 'src:sfgov-dbi-permits', 'src:sfgov-dbi-novs'],
     defaultVisible: false,
-    offline: 'bundled',
-    defaultOpacity: 0.75,
+    offline: 'cached_on_demand',
+    minZoom: 13.6,
+  },
+  {
+    id: 'mapillary-coverage',
+    name: 'Mapillary photo coverage',
+    description:
+      'Street-level photo sequences and image positions contributed to Mapillary. Crowd-sourced and incomplete, sometimes years old; use it to see where photos exist before opening Street-level imagery. Needs a free Mapillary client token and a network connection.',
+    group: 'context',
+    sourceIds: [],
+    defaultVisible: false,
+    offline: 'requires_network',
+    minZoom: 11.4,
   },
 ];
 
@@ -190,11 +212,6 @@ export const LAYER_PRESETS = [
     description: 'Your private observations and saved places, with resource context.',
   },
   {
-    id: 'history',
-    name: 'History',
-    description: 'Historic features promoted above street detail. Nothing here is researched narrative.',
-  },
-  {
     id: 'threed',
     name: '3D & terrain',
     description: 'Relief shading and extruded buildings with street detail. Pair it with the 3D control to tilt the camera.',
@@ -209,6 +226,12 @@ export const LAYER_PRESETS = [
     id: 'scenes-hideaways',
     name: 'Scenes & hideaways',
     description: 'Public spaces, POPOS, food and mutual aid, plus curated DIY and music-scene records when verified. No history layer.',
+  },
+  {
+    id: 'vacant',
+    name: 'Building registry',
+    description:
+      'Parcel dossiers from DBI records over extruded footprints. A dot marks a parcel with records, not a building that is empty today.',
   },
 ] as const;
 

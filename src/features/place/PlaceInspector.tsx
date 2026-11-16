@@ -19,7 +19,7 @@ import {
   resolutionLabel,
 } from '../../domain/verification';
 
-type Tab = 'overview' | 'access' | 'history' | 'observations' | 'sources' | 'area';
+type Tab = 'overview' | 'access' | 'timeline' | 'history' | 'observations' | 'sources' | 'area';
 
 const DETAIL_LABELS: Record<string, string> = {
   meals: 'Meal service',
@@ -63,13 +63,10 @@ const OBSERVATION_LABELS: Record<string, string> = {
   access_issue: 'Access issue',
   infrastructure_change: 'Infrastructure change',
   new_resource: 'New or changed service',
-  historical_discovery: 'Historical discovery',
   passage_discovery: 'Passage or cut-through',
   popos_observation: 'POPOS or public space candidate',
   entrance_observation: 'Entrance or access point',
   stairs_ramp_observation: 'Stairs, ramp or path',
-  architectural_detail: 'Architectural detail',
-  research_lead: 'Research lead · unverified',
   follow_up: 'Follow-up needed',
   other: 'Observation',
 };
@@ -89,7 +86,7 @@ export function PlaceInspector({ placeId, onClose, onComposeNote }: Props) {
         const category: CategoryId = observation.type === 'passage_discovery' ? 'passage'
           : observation.type === 'popos_observation' ? 'popos'
             : observation.type === 'entrance_observation' || observation.type === 'stairs_ramp_observation' ? 'pedestrian_connection'
-              : observation.type === 'research_lead' ? 'research_lead' : 'urban_clue';
+              : 'services';
         return {
           id: placeId, name: observation.placeName ?? `Private ${CATEGORY_BY_ID.get(category)?.short ?? 'field'} observation`, category,
           geometry: observation.geometry, address: null, addressType: 'point' as const,
@@ -154,7 +151,7 @@ export function PlaceInspector({ placeId, onClose, onComposeNote }: Props) {
     { id: 'overview', label: 'Overview' },
     { id: 'area', label: 'Area' },
     { id: 'access', label: 'Access' },
-    { id: 'history', label: 'History' },
+    { id: 'timeline', label: 'Evidence' },
     ...(observations.length ? [{ id: 'observations' as Tab, label: 'Observations', count: observations.length }] : []),
     { id: 'sources', label: 'Sources', count: sources.length },
   ];
@@ -258,7 +255,7 @@ export function PlaceInspector({ placeId, onClose, onComposeNote }: Props) {
         <div className="inline-panel">
           {state.collections.length === 0 ? (
             <p className="muted small">
-              No collections yet. Create one in the Atlas workspace, then save this place into it.
+              No collections yet. Create one in the Library workspace, then save this place into it.
             </p>
           ) : (
             <ul className="collection-picker">
@@ -590,7 +587,7 @@ export function PlaceInspector({ placeId, onClose, onComposeNote }: Props) {
           </div>
         )}
 
-        {tab === 'history' && (
+        {tab === 'timeline' && (
           <div className="stack">
             <p className="muted small">
               Distinct evidence, not one merged fact. A City dataset row, a provider page and your own observation can

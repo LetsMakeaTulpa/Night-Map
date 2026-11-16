@@ -1,18 +1,17 @@
 import { useEffect, useRef, useState } from 'react';
-import type { Observation, ObservationPhoto, ObservationType } from '../../domain/types';
+import type { BuildingCondition, Observation, ObservationPhoto, ObservationType } from '../../domain/types';
+import { BUILDING_CONDITIONS } from '../../domain/buildings';
 import { useStore } from '../../state/store';
 import { preparePhoto, PhotoError } from '../../services/photo';
 import { clearDraft, loadDraft, saveDraft } from '../../services/storage';
 import { formatDate } from '../../domain/status';
 
 const TYPES: { id: ObservationType; label: string }[] = [
+  { id: 'building_verification', label: 'Field verification' },
   { id: 'passage_discovery', label: 'Passage or cut-through' },
   { id: 'popos_observation', label: 'POPOS or public space candidate' },
   { id: 'entrance_observation', label: 'Entrance or access point' },
   { id: 'stairs_ramp_observation', label: 'Stairs, ramp or path' },
-  { id: 'architectural_detail', label: 'Architectural detail' },
-  { id: 'historical_discovery', label: 'Historical feature' },
-  { id: 'research_lead', label: 'Research lead (unverified)' },
   { id: 'resource_present', label: 'Resource exists' },
   { id: 'resource_not_found', label: 'Resource not found' },
   { id: 'hours_incorrect', label: 'Hours seem wrong' },
@@ -29,6 +28,9 @@ export interface ComposeTarget {
   placeId: string | null;
   placeName: string | null;
   coordinates: [number, number] | null;
+  /** When set, the note is a condition check on a registry parcel. */
+  buildingId?: string | null;
+  buildingAddress?: string | null;
 }
 
 interface Props {
@@ -44,6 +46,7 @@ interface DraftState {
   observedAt: string;
   photo: ObservationPhoto | null;
   accessStatus: NonNullable<Observation['accessStatus']>;
+  buildingCondition?: BuildingCondition | 'unset';
   sourceReference: string;
   confidence: NonNullable<Observation['confidence']>;
 }
@@ -56,7 +59,10 @@ const nowLocal = () => {
 
 export function FieldnoteComposer({ target, existing, onDone, onCancel }: Props) {
   const { actions } = useStore();
-  const [type, setType] = useState<ObservationType>(existing?.type ?? 'passage_discovery');
+  const buildingId = target.buildingId ?? existing?.buildingId ?? null;
+  const [type, setType] = useState<ObservationType>(
+    existing?.type ?? (buildingId ? 'building_verification' : 'passage_discovery'),
+  );
   const [note, setNote] = useState(existing?.note ?? '');
   const [observedAt, setObservedAt] = useState(
     existing ? existing.observedAt.slice(0, 16) : nowLocal(),
@@ -65,6 +71,9 @@ export function FieldnoteComposer({ target, existing, onDone, onCancel }: Props)
   const [accessStatus, setAccessStatus] = useState<NonNullable<Observation['accessStatus']>>(existing?.accessStatus ?? 'unknown');
   const [sourceReference, setSourceReference] = useState(existing?.sourceReference ?? '');
   const [confidence, setConfidence] = useState<NonNullable<Observation['confidence']>>(existing?.confidence ?? 'unverified');
+  const [buildingCondition, setBuildingCondition] = useState<BuildingCondition | 'unset'>(
+    existing?.buildingCondition ?? 'unset',
+  );
   const [photoWarning, setPhotoWarning] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [draftRestored, setDraftRestored] = useState(false);
@@ -82,6 +91,7 @@ export function FieldnoteComposer({ target, existing, onDone, onCancel }: Props)
         setObservedAt(draft.observedAt);
         setPhoto(draft.photo);
         setAccessStatus(draft.accessStatus ?? 'unknown');
+        setBuildingCondition(draft.buildingCondition ?? 'unset');
         setSourceReference(draft.sourceReference ?? '');
         setConfidence(draft.confidence ?? 'unverified');
         setDraftRestored(true);
@@ -95,11 +105,20 @@ export function FieldnoteComposer({ target, existing, onDone, onCancel }: Props)
   useEffect(() => {
     if (existing) return;
     const timeout = window.setTimeout(() => {
-      const draft: DraftState = { type, note, observedAt, photo, accessStatus, sourceReference, confidence };
+      const draft: DraftState = {
+        type,
+        note,
+        observedAt,
+        photo,
+        accessStatus,
+        buildingCondition,
+        sourceReference,
+        confidence,
+      };
       void saveDraft(draft);
     }, 500);
     return () => window.clearTimeout(timeout);
-  }, [type, note, observedAt, photo, accessStatus, sourceReference, confidence, existing]);
+  }, [type, note, observedAt, photo, accessStatus, buildingCondition, sourceReference, confidence, existing]);
 
   const handlePhoto = async (file: File | undefined) => {
     if (!file) return;
@@ -128,6 +147,8 @@ export function FieldnoteComposer({ target, existing, onDone, onCancel }: Props)
         observedAt: new Date(observedAt).toISOString(),
         photo,
         accessStatus,
+        buildingId,
+        buildingCondition: buildingCondition === 'unset' ? undefined : buildingCondition,
         sourceReference: sourceReference.trim() || undefined,
         confidence,
       });
@@ -141,6 +162,8 @@ export function FieldnoteComposer({ target, existing, onDone, onCancel }: Props)
         observedAt: new Date(observedAt).toISOString(),
         photo,
         accessStatus,
+        buildingId,
+        buildingCondition: buildingCondition === 'unset' ? undefined : buildingCondition,
         sourceReference: sourceReference.trim() || undefined,
         confidence,
       });
@@ -149,7 +172,10 @@ export function FieldnoteComposer({ target, existing, onDone, onCancel }: Props)
     onDone();
   };
 
-  const verb = existing ? 'Save changes' : 'Save private note';
+  const verb = existing ? 'Save changes' : buildingId ? 'Save private verification' : 'Save private note';
+  const visibleTypes = buildingId
+    ? TYPES
+    : TYPES.filter((entry) => entry.id !== 'building_verification');
 
   return (
     <form
@@ -161,12 +187,19 @@ export function FieldnoteComposer({ target, existing, onDone, onCancel }: Props)
     >
       <div className="composer-head">
         <div>
-          <p className="eyebrow">{existing ? 'Edit field note' : 'New field note'}</p>
+          <p className="eyebrow">
+            {existing ? 'Edit' : 'New'} {buildingId ? 'private field verification' : 'field note'}
+          </p>
           <h3>{target.placeName ?? 'Pinned observation'}</h3>
+          {buildingId && (
+            <p className="muted small">
+              Private field verification on a registry parcel. Kept on this device beside the City record, which it never changes.
+            </p>
+          )}
           {target.coordinates && (
             <p className="muted small">
-              {target.placeId ? 'Attached to a place record' : 'Pin at'} · {target.coordinates[1].toFixed(5)},{' '}
-              {target.coordinates[0].toFixed(5)}
+              {target.placeId ? 'Attached to a place record' : buildingId ? 'Parcel position' : 'Pin at'} ·{' '}
+              {target.coordinates[1].toFixed(5)}, {target.coordinates[0].toFixed(5)}
             </p>
           )}
         </div>
@@ -178,7 +211,7 @@ export function FieldnoteComposer({ target, existing, onDone, onCancel }: Props)
       <fieldset className="field">
         <legend>What did you observe?</legend>
         <div className="chip-grid">
-          {TYPES.map((t) => (
+          {visibleTypes.map((t) => (
             <button
               key={t.id}
               type="button"
@@ -191,6 +224,27 @@ export function FieldnoteComposer({ target, existing, onDone, onCancel }: Props)
           ))}
         </div>
       </fieldset>
+
+      {buildingId && (
+        <label className="field">
+          <span>Condition seen from outside (optional)</span>
+          <select
+            value={buildingCondition}
+            onChange={(event) => setBuildingCondition(event.target.value as BuildingCondition | 'unset')}
+          >
+            <option value="unset">Not recorded</option>
+            {BUILDING_CONDITIONS.map((condition) => (
+              <option key={condition.id} value={condition.id}>
+                {condition.label}
+              </option>
+            ))}
+          </select>
+          <span className="field-foot">
+            {BUILDING_CONDITIONS.find((condition) => condition.id === buildingCondition)?.note ??
+              'This is your visual note, stored locally, and is never presented as a City finding.'}
+          </span>
+        </label>
+      )}
 
       <div className="field-row">
         <label className="field">
@@ -233,7 +287,7 @@ export function FieldnoteComposer({ target, existing, onDone, onCancel }: Props)
 
       <div className="field-row">
         <label className="field">
-          <span>When did you observe this?</span>
+          <span>{buildingId ? 'Date and time of verification' : 'When did you observe this?'}</span>
           <input type="datetime-local" value={observedAt} onChange={(e) => setObservedAt(e.target.value)} />
         </label>
         <div className="field">
@@ -248,7 +302,7 @@ export function FieldnoteComposer({ target, existing, onDone, onCancel }: Props)
       </div>
 
       <div className="field">
-        <span>Photo (optional)</span>
+        <span>{buildingId ? 'Verification photo (optional)' : 'Photo (optional)'}</span>
         {photo ? (
           <div className="photo-preview">
             <img src={photo.dataUrl} alt="Attached field observation" />

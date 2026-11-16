@@ -32,10 +32,20 @@ import {
 } from './incidents';
 import { IncidentCard } from '../features/incidents/IncidentCard';
 import { StreetLevelViewer } from './StreetLevelViewer';
+import { cachedBuildingRegistry, loadBuildingRegistry } from '../data/building-registry';
+import { cachedAbandonedBuildings, loadAbandonedBuildings } from '../data/abandoned-buildings';
+import type { AbandonedBuildingFile, BuildingRegistry } from '../domain/types';
 
 interface MapViewProps {
   views: PlaceView[];
   onOpenLayers: () => void;
+}
+
+export interface MapLiveCounts {
+  calls: number;
+  cases311: number;
+  registry: number;
+  abandoned: number;
 }
 
 const MAP_PADDING = () => {
@@ -69,6 +79,8 @@ export function MapView({ views, onOpenLayers }: MapViewProps) {
   const [legendOpen, setLegendOpen] = useState(false);
   const [camera, setCamera] = useState({ pitch: 0, bearing: 0 });
   const [buildingsState, setBuildingsState] = useState({ loaded: 0, failed: 0 });
+  const [registryState, setRegistryState] = useState<{ loaded: number; error: string | null }>({ loaded: 0, error: null });
+  const [abandonedState, setAbandonedState] = useState<{ loaded: number; error: string | null }>({ loaded: 0, error: null });
   const [terrainTilesMissing, setTerrainTilesMissing] = useState(false);
   const [incidentCard, setIncidentCard] = useState<{
     feed: IncidentFeed;
@@ -437,6 +449,8 @@ export function MapView({ views, onOpenLayers }: MapViewProps) {
     set([INCIDENT_PULSE_LAYER, INCIDENT_LAYER.calls], Boolean(state.layers['calls-recent']));
     set([INCIDENT_LAYER.cases311], Boolean(state.layers['cases-311']));
     set(['maintenance-requests'], Boolean(state.layers.maintenance || state.layers['cases-311']));
+    set(['building-registry-dots', 'building-registry-labels'], Boolean(state.layers['building-registry']));
+    set(['abandoned-glow', 'abandoned-ring'], Boolean(state.layers['abandoned-buildings']));
 
     if (map.getLayer('landmark-dots')) {
       map.setPaintProperty('landmark-dots', 'circle-opacity', state.layerOpacity.landmarks ?? 0.75);
@@ -446,6 +460,85 @@ export function MapView({ views, onOpenLayers }: MapViewProps) {
       map.setPaintProperty('hillshade', 'hillshade-exaggeration', state.layerOpacity.terrain ?? 0.32);
     }
   }, [state.layers, state.layerOpacity, ready]);
+
+  // Building registry points. The full registry is fetched only when the layer
+  // is switched on, then kept in memory and by the service worker.
+  const registryOn = Boolean(state.layers['building-registry']);
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map || !ready) return;
+    const source = map.getSource('buildingRegistry') as maplibregl.GeoJSONSource | undefined;
+    if (!registryOn) {
+      source?.setData(EMPTY_FC);
+      setRegistryState({ loaded: 0, error: null });
+      return;
+    }
+    let cancelled = false;
+    const apply = (registry: BuildingRegistry) => {
+      if (cancelled) return;
+      const features = registry.dossiers
+        .filter((dossier) => dossier.coordinates)
+        .map((dossier) => ({
+          type: 'Feature' as const,
+          properties: { id: dossier.id, status: dossier.status, address: dossier.address },
+          geometry: { type: 'Point' as const, coordinates: dossier.coordinates as [number, number] },
+        }));
+      source?.setData({ type: 'FeatureCollection', features } as unknown as GeoJSON.FeatureCollection);
+      setRegistryState({ loaded: features.length, error: null });
+    };
+    const held = cachedBuildingRegistry();
+    if (held) apply(held);
+    else {
+      loadBuildingRegistry()
+        .then(apply)
+        .catch((err: Error) => {
+          if (!cancelled) setRegistryState({ loaded: 0, error: err.message });
+        });
+    }
+    return () => {
+      cancelled = true;
+    };
+  }, [registryOn, ready]);
+
+  const abandonedOn = Boolean(state.layers['abandoned-buildings']);
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map || !ready) return;
+    const source = map.getSource('abandonedBuildings') as maplibregl.GeoJSONSource | undefined;
+    if (!abandonedOn) {
+      source?.setData(EMPTY_FC);
+      setAbandonedState({ loaded: 0, error: null });
+      return;
+    }
+    let cancelled = false;
+    const apply = (file: AbandonedBuildingFile) => {
+      if (cancelled) return;
+      const features = file.dossiers.map((dossier) => ({
+        type: 'Feature' as const,
+        properties: {
+          id: dossier.id,
+          address: dossier.address,
+          status: dossier.status,
+          precision: dossier.locationPrecision,
+        },
+        geometry: { type: 'Point' as const, coordinates: dossier.coordinates },
+      }));
+      source?.setData({ type: 'FeatureCollection', features } as unknown as GeoJSON.FeatureCollection);
+      setAbandonedState({ loaded: features.length, error: null });
+    };
+    const held = cachedAbandonedBuildings();
+    if (held) apply(held);
+    else {
+      loadAbandonedBuildings()
+        .then(apply)
+        .catch((err: Error) => {
+          if (!cancelled) setAbandonedState({ loaded: 0, error: err.message });
+        });
+    }
+    return () => {
+      cancelled = true;
+    };
+  }, [abandonedOn, ready]);
 
   // Camera readout: the compass needle and the tilt chip both follow this.
   useEffect(() => {
@@ -631,7 +724,7 @@ export function MapView({ views, onOpenLayers }: MapViewProps) {
       if (state.route.picking) return; // handled by a dedicated listener below
       const incidentLayers = [INCIDENT_LAYER.calls, INCIDENT_LAYER.cases311, 'maintenance-requests'].filter((id) => map.getLayer(id));
       const hits = map.queryRenderedFeatures(event.point, {
-        layers: ['places-symbol', 'stops-dots', 'landmark-dots', ...incidentLayers].filter((id) =>
+        layers: ['places-symbol', 'stops-dots', 'landmark-dots', 'building-registry-dots', ...incidentLayers].filter((id) =>
           map.getLayer(id),
         ),
       });
@@ -655,7 +748,8 @@ export function MapView({ views, onOpenLayers }: MapViewProps) {
       const placeHit = hits.find((h) => h.layer.id === 'places-symbol');
       const stopHit = hits.find((h) => h.layer.id === 'stops-dots');
       const landmarkHit = hits.find((h) => h.layer.id === 'landmark-dots');
-      const markerHit = placeHit ?? stopHit ?? landmarkHit ?? null;
+      const buildingHit = hits.find((h) => h.layer.id === 'building-registry-dots');
+      const markerHit = placeHit ?? stopHit ?? landmarkHit ?? buildingHit ?? null;
       const incidentHit = nearestOf(incidentLayers);
 
       if (incidentHit && (!markerHit || distanceToTap(incidentHit) < distanceToTap(markerHit))) {
@@ -685,6 +779,11 @@ export function MapView({ views, onOpenLayers }: MapViewProps) {
         if (match) actions.selectPlace(match.id);
         return;
       }
+      if (buildingHit) {
+        const id = String(buildingHit.properties?.id ?? '');
+        if (id) actions.selectBuilding(id);
+        return;
+      }
       const clusters = map.queryRenderedFeatures(event.point, { layers: ['cluster-halo'] });
       if (clusters.length > 0) {
         const feature = clusters[0] as MapGeoJSONFeature;
@@ -705,6 +804,7 @@ export function MapView({ views, onOpenLayers }: MapViewProps) {
           'places-symbol',
           'stops-dots',
           'landmark-dots',
+          'building-registry-dots',
           'cluster-halo',
           INCIDENT_LAYER.calls,
           INCIDENT_LAYER.cases311,
@@ -874,6 +974,20 @@ export function MapView({ views, onOpenLayers }: MapViewProps) {
             {buildingsState.loaded > 0
               ? `3D buildings: ${buildingsState.loaded} loaded`
               : `3D buildings load at street zoom (z${BUILDINGS_MIN_ZOOM})`}
+          </span>
+        )}
+        {registryOn && (
+          <span className="map-scale-note" data-testid="registry-status">
+            {registryState.error
+              ? `Building registry unavailable — ${registryState.error}`
+              : `${registryState.loaded} parcel dossiers with a published point`}
+          </span>
+        )}
+        {abandonedOn && (
+          <span className="map-scale-note" data-testid="abandoned-status">
+            {abandonedState.error
+              ? `Vacancy markers unavailable — ${abandonedState.error}`
+              : `${abandonedState.loaded} vacancy/abandonment parcels`}
           </span>
         )}
         {terrainOn && terrainTilesMissing && (

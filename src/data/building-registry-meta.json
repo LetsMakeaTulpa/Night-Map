@@ -1,0 +1,61 @@
+{
+ "generatedAt": "2026-11-15T03:59:10.522Z",
+ "sources": [
+  {
+   "id": "src:sfgov-dbi-complaints",
+   "dataset": "gm2e-bten",
+   "rows": 16021
+  },
+  {
+   "id": "src:sfgov-dbi-permits",
+   "dataset": "i98e-djp9",
+   "rows": 212080
+  },
+  {
+   "id": "src:sfgov-dbi-novs",
+   "dataset": "nbtm-fbw5",
+   "rows": 125350
+  }
+ ],
+ "footprint": {
+  "west": -122.429,
+  "south": 37.7585,
+  "east": -122.3905,
+  "north": 37.7975
+ },
+ "since": "2005-01-01",
+ "newestRecordAt": "2026-11-13",
+ "classificationNote": "A classification of City records attached to a parcel. It is not a field check: a building with a vacancy complaint can be occupied, and a boarded building can be under legitimate construction.",
+ "scope": "Parcels in the footprint with at least one public record describing a vacant, abandoned, boarded or derelict condition, or with a demolition permit on file. Every dossier keeps its underlying records; the classification is a reading of those records, not a finding that a building is empty today.",
+ "counts": {
+  "dossiers": 3847,
+  "withCoordinates": 1804,
+  "withParcelPoint": 1740,
+  "blockCentroidPlaced": 64,
+  "withoutCoordinates": 2043,
+  "excludedStale": 3731,
+  "vacancySignalParcels": 2995,
+  "demolitionParcels": 590,
+  "permitsRead": 212080,
+  "complaintsRead": 16021,
+  "noticesRead": 125350,
+  "complaintsUnmatched": 6187,
+  "byStatus": {
+   "reported_vacant": 1169,
+   "vacancy_history": 1691,
+   "under_demolition": 334,
+   "code_enforcement": 472,
+   "demolition_history": 113,
+   "under_construction": 68
+  }
+ },
+ "limitations": [
+  "The City publishes no vacant-building register, so this registry is derived from complaint, permit and violation records. It cannot establish that a building is empty today.",
+  "Only the newest three records of each kind are bundled with a dossier; the counts and dates describe the full set the City returned. Older rows stay queryable in the City datasets.",
+  "A dossier without a City-published point is placed at the centroid of the geocoded parcels on the same block. That is a block-level position and is labelled as one.",
+  "A complaint is a report, not an inspection finding, and a notice of violation is a notice, not a court decision.",
+  "Complaints are selected by keyword because the dataset carries no coordinates, then joined on block/lot. A complaint whose wording avoids the keyword list is not in this build, and a parcel the City never placed on a map has no point of its own.",
+  "The bundled window starts in 2022. Earlier complaints, permits and notices remain in the City datasets and are not deleted; they are simply not bundled in every install.",
+  "Addresses are composed from the number, street name and suffix columns; the City does not publish a unit or a canonical address string in these datasets."
+ ]
+}

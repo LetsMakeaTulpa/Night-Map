@@ -1,40 +1,19 @@
 /**
- * Incident layers: a published record of dispatched calls, and the city's 311
- * service log. Both are City of San Francisco open data, normalised by
- * scripts/fetch-incidents.mjs, and both are snapshots rather than live taps.
+ * Incident layers: dispatched calls and the city's 311 service log.
  *
- * Nothing here is a live 911 feed, there is no audio, and the app says so on the
- * card, in the layer drawer and in the legend. The exclusion rules that keep
- * people out of these layers live in scripts/lib/incidents.mjs and are applied
- * before the files are written, so the app cannot plot what was refused.
+ * The calls layer is refreshed at runtime from the City's 10-minute-delayed CAD
+ * extract (see live-calls.ts) and falls back to the bundled snapshot when the
+ * network is unavailable. 311 is a nightly dataset, so its bundled snapshot is
+ * still the honest unit. Neither is live 911 and there is no audio; the app says
+ * so on the card, in the layer drawer and in the legend. The exclusion rules that
+ * keep people out of these layers are applied at build time and again at runtime.
  */
 import incidentsMeta from '../data/incidents-meta.json';
+import type { IncidentCollection, IncidentFeature } from './incident-shape';
+
+export type { IncidentCollection, IncidentFeature } from './incident-shape';
 
 export type IncidentFeed = 'calls' | 'cases311';
-
-export interface IncidentFeature {
-  type: 'Feature';
-  properties: {
-    kind: string;
-    bucket: string;
-    at: string;
-    subtype?: string | null;
-    where?: string | null;
-    agency?: string | null;
-    priority?: string | null;
-    disposition?: string | null;
-    status?: string | null;
-    neighbourhood?: string | null;
-    district?: string | null;
-    seenByOfficer?: boolean;
-  };
-  geometry: { type: 'Point'; coordinates: [number, number] };
-}
-
-export interface IncidentCollection {
-  type: 'FeatureCollection';
-  features: IncidentFeature[];
-}
 
 export const INCIDENT_SOURCE: Record<IncidentFeed, string> = {
   calls: 'callsRecent',

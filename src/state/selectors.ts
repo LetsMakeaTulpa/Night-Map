@@ -28,7 +28,7 @@ export function buildPlaceView(place: Place, index: DatasetIndex, state: AppStat
 
 export function matchesFilters(view: PlaceView, filters: Filters, now = new Date()): boolean {
   const { place, evidence, resource } = view;
-  if (place.category === 'history' || !filters.categories.includes(place.category)) return false;
+  if (!filters.categories.includes(place.category)) return false;
   if (filters.openNow && evidence.openNow !== true) return false;
   if (filters.freeOnly && resource?.cost?.kind !== 'free') return false;
   if (filters.nearTransit && !view.isNearTransit) return false;
@@ -39,10 +39,10 @@ export function matchesFilters(view: PlaceView, filters: Filters, now = new Date
   return true;
 }
 
-const DISCOVERY_TYPES: string[] = ['passage_discovery', 'popos_observation', 'entrance_observation', 'stairs_ramp_observation', 'architectural_detail', 'historical_discovery', 'research_lead'];
+const DISCOVERY_TYPES: string[] = ['passage_discovery', 'popos_observation', 'entrance_observation', 'stairs_ramp_observation'];
 
 export function filteredViews(state: AppState, index: DatasetIndex, now = new Date()): PlaceView[] {
-  const bundled = index.data.places.filter((place) => place.category !== 'history').map((place) => buildPlaceView(place, index, state, now));
+  const bundled = index.data.places.map((place) => buildPlaceView(place, index, state, now));
   const source = {
     id: 'src:private-observation', name: 'Private field observation', url: '', provider: 'This device',
     sourceType: 'official_web' as const, license: 'Private local data', licenseUrl: null,
@@ -56,8 +56,7 @@ export function filteredViews(state: AppState, index: DatasetIndex, now = new Da
       const category: CategoryId = observation.type === 'passage_discovery' ? 'passage'
         : observation.type === 'popos_observation' ? 'popos'
           : observation.type === 'entrance_observation' || observation.type === 'stairs_ramp_observation' ? 'pedestrian_connection'
-            : observation.type === 'research_lead' ? 'research_lead'
-              : observation.type === 'historical_discovery' || observation.type === 'architectural_detail' ? 'urban_clue' : 'urban_clue';
+            : 'services';
       const definition = CATEGORY_BY_ID.get(category);
       const place: Place = {
         id: `private:${observation.id}`, name: observation.placeName ?? `Private ${definition?.short ?? 'field'} observation`,

@@ -7,6 +7,9 @@ import { PlaceInspector, CompareTray } from '../place/PlaceInspector';
 import { NearbyList, SearchBar } from '../discovery/Discovery';
 import { RoutePanel } from '../routing/RoutePanel';
 import { FieldnotesWorkspace } from '../fieldnotes/FieldnotesWorkspace';
+import { BuildingsWorkspace } from '../buildings/BuildingsWorkspace';
+import { BuildingDossier } from '../buildings/BuildingDossier';
+import { LibraryWorkspace } from '../library/LibraryWorkspace';
 import { AtlasWorkspace } from '../atlas/AtlasWorkspace';
 import { FeedsWorkspace } from '../feeds/FeedsWorkspace';
 import { ReviewWorkspace } from '../review/ReviewWorkspace';
@@ -21,6 +24,8 @@ const WORKSPACES = [
   { id: 'nearby', label: 'Nearby', icon: 'M12 3.5 20 12l-8 8.5L4 12z' },
   { id: 'fieldnotes', label: 'Field map', icon: 'M5 3.5h11l3 3v14H5zM8.5 11h7M8.5 15h5' },
   { id: 'routes', label: 'Routes', icon: 'M5 19 19 5M11 5h8v8' },
+  { id: 'buildings', label: 'Buildings', icon: 'M3.5 21h17M5.5 21V8l6.5-4.5L18.5 8v13M9 11h1.5M13.5 11H15M9 15h1.5M13.5 15H15' },
+  { id: 'library', label: 'Library', icon: 'M4 4.5h5v15H4zM11 4.5h5v15h-5zM18 5.5l4 13.5M6.5 8h6M6.5 11.5h4' },
   { id: 'atlas', label: 'Atlas', icon: 'M3.5 21h17M6 21V10M12 21V10M18 21V10M3 10h18L12 3.5 3 10Z' },
   { id: 'review', label: 'Review', icon: 'M6.5 4.5h11v15h-11zM9 8.5h6M9 12h6M9 15.5h3.5' },
 ] as const;
@@ -45,7 +50,7 @@ type NavId = WorkspaceId | (typeof FEED_TABS)[number]['id'];
  * header button beside search so neither workspace is unreachable on a phone.
  */
 const MOBILE_WORKSPACES = WORKSPACES.filter(
-  (workspace) => workspace.id !== 'review',
+  (workspace) => workspace.id !== 'review' && workspace.id !== 'library',
 );
 
 export function AppShell() {
@@ -147,6 +152,7 @@ export function AppShell() {
   }, [desktop]);
 
   const sheetHeights = {
+    dismissed: 104,
     collapsed: 104,
     peek: Math.round((typeof window === 'undefined' ? 800 : window.innerHeight) * 0.46),
     expanded: Math.round((typeof window === 'undefined' ? 800 : window.innerHeight) * 0.86),
@@ -192,6 +198,10 @@ export function AppShell() {
         return <RoutePanel />;
       case 'fieldnotes':
         return <FieldnotesWorkspace />;
+      case 'buildings':
+        return <BuildingsWorkspace />;
+      case 'library':
+        return <LibraryWorkspace />;
       case 'atlas':
         return <AtlasWorkspace />;
       case 'review':
@@ -286,6 +296,20 @@ export function AppShell() {
             <div className="desktop-edge-panel-scroll">
               <PlaceInspector placeId={selectedPlace.id} onClose={() => { actions.selectPlace(null); setInspectorOpen(false); }} onComposeNote={setComposeTarget} />
               <CompareTray />
+            </div>
+          </section>
+        )}
+
+        {state.workspace === 'buildings' && state.selectedBuildingId && (
+          <section className="desktop-edge-panel desktop-edge-panel-right" aria-label="Selected building dossier">
+            <header><div><span className="eyebrow">Selected dossier</span><h2>Building record</h2></div>
+              <button type="button" className="icon-button" onClick={() => actions.selectBuilding(null)} aria-label="Close dossier">×</button></header>
+            <div className="desktop-edge-panel-scroll">
+              <BuildingDossier
+                dossierId={state.selectedBuildingId}
+                onBack={() => actions.selectBuilding(null)}
+                onComposeCheck={setComposeTarget}
+              />
             </div>
           </section>
         )}
@@ -416,7 +440,13 @@ export function AppShell() {
           )}
         </div>
         <div className="sheet-scroll">
-          {selectedPlace && (state.workspace === 'map' || state.workspace === 'nearby') ? (
+          {state.workspace === 'buildings' && state.selectedBuildingId ? (
+            <BuildingDossier
+              dossierId={state.selectedBuildingId}
+              onBack={() => actions.selectBuilding(null)}
+              onComposeCheck={setComposeTarget}
+            />
+          ) : selectedPlace && (state.workspace === 'map' || state.workspace === 'nearby') ? (
             <PlaceInspector
               placeId={selectedPlace.id}
               onClose={() => {

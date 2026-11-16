@@ -18,6 +18,7 @@ import neighbourhoodsJson from './neighbourhoods.json';
 import metaJson from './meta.json';
 import accessJson from './access.json';
 import disclosuresJson from './disclosures.json';
+import buildingRegistryMeta from './building-registry-meta.json';
 
 export interface DatasetIndex {
   data: AppDataset;
@@ -93,6 +94,7 @@ export function loadDataset(): DatasetIndex {
     places: places.length,
     resources: resources.length,
     disclosures: disclosureFile.entries.length,
+    buildings: buildingRegistryMeta.counts.dossiers,
   };
 
   cached = {

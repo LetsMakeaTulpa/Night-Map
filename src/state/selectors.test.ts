@@ -67,10 +67,8 @@ describe('matchesFilters', () => {
     expect(matchesFilters(view(), baseFilters)).toBe(true);
   });
 
-  it('excludes categories not selected and all historic features', () => {
+  it('excludes categories that are not selected', () => {
     expect(matchesFilters(view(), { ...baseFilters, categories: ['food'] })).toBe(false);
-    const historic = { ...view(), place: { ...place, category: 'history' as const } };
-    expect(matchesFilters(historic, baseFilters)).toBe(false);
   });
 
   it('requires a real open claim for the open-now condition', () => {
