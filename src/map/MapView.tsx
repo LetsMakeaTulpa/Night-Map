@@ -5,6 +5,8 @@ import { buildStyle, EMPTY_FC } from './style';
 import { buildMarkerImages, buildLocationDot } from './icons';
 import { useStore } from '../state/store';
 import { CATEGORIES, SWATCH } from '../domain/categories';
+import { isFixFresh, MESSAGE_UNLOCK_RADIUS_M, messageMarkerState } from '../domain/messages';
+import { formatDistance } from '../domain/geo';
 import { dataset } from '../data';
 import type { PlaceView } from '../state/selectors';
 import { LAYERS } from './layers';
@@ -75,6 +77,7 @@ export function MapView({ views, onOpenLayers }: MapViewProps) {
   const overviewContainerRef = useRef<HTMLDivElement | null>(null);
   const overviewMapRef = useRef<MapLibreMap | null>(null);
   const [ready, setReady] = useState(false);
+  const [clock, setClock] = useState(() => Date.now());
   const [mapError, setMapError] = useState<string | null>(null);
   const [legendOpen, setLegendOpen] = useState(false);
   const [camera, setCamera] = useState({ pitch: 0, bearing: 0 });
@@ -95,6 +98,7 @@ export function MapView({ views, onOpenLayers }: MapViewProps) {
   const [streetLevelOpen, setStreetLevelOpen] = useState(false);
   const [streetLevelCoordinates, setStreetLevelCoordinates] = useState<[number, number]>([-122.4085, 37.7835]);
   const locationMarker = useRef<maplibregl.Marker | null>(null);
+  const gpsFollowStarted = useRef(false);
   const selectedPlace = state.selectedPlaceId
     ? dataset.placeById.get(state.selectedPlaceId) ?? (state.selectedPlaceId.startsWith('private:')
         ? (() => {
@@ -335,19 +339,33 @@ export function MapView({ views, onOpenLayers }: MapViewProps) {
   }, [ready]);
 
   useEffect(() => {
+    const timer = window.setInterval(() => setClock(Date.now()), 10_000);
+    return () => window.clearInterval(timer);
+  }, []);
+
+  useEffect(() => {
     const map = mapRef.current;
     if (!map || !ready) return;
     (map.getSource('observations') as maplibregl.GeoJSONSource | undefined)?.setData({
       type: 'FeatureCollection',
       features: state.observations
         .filter((o) => o.geometry)
-        .map((o) => ({
-          type: 'Feature' as const,
-          properties: { id: o.id, type: o.type },
-          geometry: o.geometry!,
-        })),
+        .map((o) => {
+          const message = o.kind === 'message' ? messageMarkerState(o, state.userLocation, clock) : null;
+          return {
+            type: 'Feature' as const,
+            properties: {
+              id: o.id,
+              type: o.type,
+              kind: o.kind ?? 'fieldnote',
+              state: message?.state ?? null,
+              distanceM: message?.distanceM ?? null,
+            },
+            geometry: o.geometry!,
+          };
+        }),
     });
-  }, [state.observations, ready]);
+  }, [state.observations, state.userLocation, clock, ready]);
 
   // Focus marker (selected place or stop) sits above clusters.
   useEffect(() => {
@@ -436,7 +454,7 @@ export function MapView({ views, onOpenLayers }: MapViewProps) {
     set(['road-casing', 'roads', 'paths'], state.layers.streets);
     set(['street-labels'], state.layers['street-labels']);
     set(['green-fill', 'green-edge'], state.layers.parks && !satelliteOn);
-    set(['water-fill', 'coastline'], !satelliteOn);
+    set(['water-fill', 'bay-shelf', 'bay-shallow', 'coast-glow', 'coastline'], !satelliteOn);
     set(['hood-labels'], state.layers.neighbourhoods);
     set(['rail-line'], state.layers['transit-lines']);
     set(['stops-dots', 'stops-labels'], state.layers['transit-stops']);
@@ -446,6 +464,7 @@ export function MapView({ views, onOpenLayers }: MapViewProps) {
     set(['places-symbol', 'cluster-halo', 'cluster-count'], state.layers.resources);
     set(['saved-rings'], state.layers.saved);
     set(['obs-symbol'], state.layers.observations);
+    set(['msg-halo', 'msg-dot'], state.layers['private-messages']);
     set([INCIDENT_PULSE_LAYER, INCIDENT_LAYER.calls], Boolean(state.layers['calls-recent']));
     set([INCIDENT_LAYER.cases311], Boolean(state.layers['cases-311']));
     set(['maintenance-requests'], Boolean(state.layers.maintenance || state.layers['cases-311']));
@@ -724,7 +743,7 @@ export function MapView({ views, onOpenLayers }: MapViewProps) {
       if (state.route.picking) return; // handled by a dedicated listener below
       const incidentLayers = [INCIDENT_LAYER.calls, INCIDENT_LAYER.cases311, 'maintenance-requests'].filter((id) => map.getLayer(id));
       const hits = map.queryRenderedFeatures(event.point, {
-        layers: ['places-symbol', 'stops-dots', 'landmark-dots', 'building-registry-dots', ...incidentLayers].filter((id) =>
+        layers: ['places-symbol', 'stops-dots', 'landmark-dots', 'building-registry-dots', 'msg-halo', 'msg-dot', ...incidentLayers].filter((id) =>
           map.getLayer(id),
         ),
       });
@@ -749,7 +768,8 @@ export function MapView({ views, onOpenLayers }: MapViewProps) {
       const stopHit = hits.find((h) => h.layer.id === 'stops-dots');
       const landmarkHit = hits.find((h) => h.layer.id === 'landmark-dots');
       const buildingHit = hits.find((h) => h.layer.id === 'building-registry-dots');
-      const markerHit = placeHit ?? stopHit ?? landmarkHit ?? buildingHit ?? null;
+      const messageHit = nearestOf(['msg-halo', 'msg-dot']);
+      const markerHit = placeHit ?? stopHit ?? landmarkHit ?? buildingHit ?? messageHit ?? null;
       const incidentHit = nearestOf(incidentLayers);
 
       if (incidentHit && (!markerHit || distanceToTap(incidentHit) < distanceToTap(markerHit))) {
@@ -759,6 +779,26 @@ export function MapView({ views, onOpenLayers }: MapViewProps) {
           properties: incidentHit.properties as unknown as IncidentFeature['properties'],
           coordinates: [geometry.coordinates[0], geometry.coordinates[1]],
         });
+        return;
+      }
+      if (messageHit) {
+        const id = String(messageHit.properties?.id ?? '');
+        const message = state.observations.find((entry) => entry.id === id);
+        if (!message) return;
+        const marker = messageMarkerState(message, state.userLocation, clock);
+        if (marker.state === 'nearby') {
+          actions.selectObservation(id);
+        } else if (marker.reason === 'too_far' && marker.distanceM !== null) {
+          actions.notify(
+            `Private message locked · ${formatDistance(marker.distanceM, state.settings.units)} away. Move within ${MESSAGE_UNLOCK_RADIUS_M} m and refresh GPS to read it.`,
+            'warn',
+          );
+        } else {
+          actions.notify(
+            'Private message locked. Turn on GPS lock and get a fresh, accurate fix to read it.',
+            'warn',
+          );
+        }
         return;
       }
       if (placeHit) {
@@ -805,6 +845,8 @@ export function MapView({ views, onOpenLayers }: MapViewProps) {
           'stops-dots',
           'landmark-dots',
           'building-registry-dots',
+          'msg-halo',
+          'msg-dot',
           'cluster-halo',
           INCIDENT_LAYER.calls,
           INCIDENT_LAYER.cases311,
@@ -838,7 +880,7 @@ export function MapView({ views, onOpenLayers }: MapViewProps) {
       map.off('mousemove', handleMove);
       map.off('click', handlePick);
     };
-  }, [ready, state.route.picking, actions]);
+  }, [ready, state.route.picking, actions, clock]);
 
   // Fly to a selected place and account for the panels.
   const lastFocus = useRef<string | null>(null);
@@ -880,11 +922,51 @@ export function MapView({ views, onOpenLayers }: MapViewProps) {
     }
   }, [state.userLocation, ready]);
 
-  const recenter = () => {
+  // While GPS lock is on, every new watch fix recentres the map. The first
+  // follow also moves to street zoom; later fixes preserve the user's zoom.
+  useEffect(() => {
     const map = mapRef.current;
-    if (!map) return;
-    const center = state.userLocation?.coordinates ?? [-122.4085, 37.7835];
-    map.easeTo({ center, zoom: state.userLocation ? 16 : 14.1, padding: MAP_PADDING(), duration: 600 });
+    if (!map || !ready) return;
+    if (!state.gpsLocked) {
+      gpsFollowStarted.current = false;
+      return;
+    }
+    const location = state.userLocation;
+    if (!location || !isFixFresh(location)) return;
+    const firstFollow = !gpsFollowStarted.current;
+    gpsFollowStarted.current = true;
+    map.easeTo({
+      center: location.coordinates,
+      ...(firstFollow ? { zoom: Math.max(map.getZoom(), 16) } : {}),
+      padding: MAP_PADDING(),
+      duration: firstFollow ? 700 : 400,
+    });
+  }, [ready, state.gpsLocked, state.userLocation]);
+
+  // Panning is an explicit request to stop following. Releasing the lock also
+  // stops the watch, matching the settings label and the lock toast.
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map || !ready) return;
+    const onDragStart = () => {
+      if (state.gpsLocked) actions.stopGpsLock();
+    };
+    map.on('dragstart', onDragStart);
+    return () => {
+      map.off('dragstart', onDragStart);
+    };
+  }, [ready, state.gpsLocked, actions]);
+
+  const realignToGps = async () => {
+    const location = await actions.useCurrentLocation();
+    const map = mapRef.current;
+    if (!location || !map) return;
+    map.easeTo({
+      center: location.coordinates,
+      zoom: Math.max(map.getZoom(), 16),
+      padding: MAP_PADDING(),
+      duration: 700,
+    });
   };
 
   const stopCount = views.length;
@@ -956,13 +1038,13 @@ export function MapView({ views, onOpenLayers }: MapViewProps) {
         <div className="map-failed" role="alert">
           <h3>The map canvas could not start</h3>
           <p>{mapError}</p>
-          <p>Search, placed lists and saved records still work. Try a browser with WebGL enabled.</p>
+          <p>Search, placed lists and saved places still work. Try a browser with WebGL enabled.</p>
         </div>
       )}
 
       <div className="map-topline">
         <span className="map-scale-note is-count">
-          {stopCount} {stopCount === 1 ? 'record' : 'records'} in this filter
+          {stopCount} {stopCount === 1 ? 'place' : 'places'} in this filter
         </span>
         {is3d && (
           <span className="map-scale-note is-3d">
@@ -1060,10 +1142,10 @@ export function MapView({ views, onOpenLayers }: MapViewProps) {
         </button>
         <button
           type="button"
-          className="map-control"
-          onClick={() => void actions.useCurrentLocation()}
-          aria-label="Use current location"
-          title="Use current location"
+          className={`map-control ${state.gpsLocked ? 'is-active' : ''}`}
+          onClick={() => void realignToGps()}
+          aria-label="Realign to my GPS location"
+          title="Get a fresh GPS fix and centre the map on me"
         >
           <CrosshairIcon />
         </button>
@@ -1095,11 +1177,6 @@ export function MapView({ views, onOpenLayers }: MapViewProps) {
           </button>
         </div>
       </div>
-
-      <button type="button" className="map-recenter" onClick={recenter}>
-        <CrosshairIcon />
-        <span>Recenter</span>
-      </button>
 
       {legendOpen && (
         <div className="legend" role="dialog" aria-label="Map legend">
@@ -1161,7 +1238,7 @@ export function MapView({ views, onOpenLayers }: MapViewProps) {
               <h4>About reported activity</h4>
               <ul>
                 <li>
-                  These are published City records, not a live feed. Dispatched calls come from the City’s
+                  These are published City reports, not a live feed. Dispatched calls come from the City’s
                   real-time CAD extract, which only publishes calls that have already closed, treats the City’s
                   withheld sensitive calls as absent, and places each record at an intersection or block rather
                   than a door.
@@ -1205,7 +1282,7 @@ export function MapView({ views, onOpenLayers }: MapViewProps) {
             </div>
           )}
           <p className="legend-foot">
-            Counts are records installed in this release, not everything that exists. Colour is never the only cue:
+            Counts are places installed in this release, not everything that exists. Colour is never the only cue:
             every marker also has a symbol, and every category is named.
           </p>
         </div>

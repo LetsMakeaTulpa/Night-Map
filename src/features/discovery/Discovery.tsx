@@ -185,7 +185,7 @@ export function FilterBar({ compact = false }: { compact?: boolean }) {
               className={`filter-chip ${enabled ? 'is-active' : ''} ${count === 0 ? 'is-empty' : ''}`}
               aria-pressed={enabled}
               onClick={() => actions.toggleCategory(category.id)}
-              title={count === 0 ? category.serviceNote ?? 'No records installed in this release' : `${count} records in this release`}
+              title={count === 0 ? category.serviceNote ?? 'No places installed in this release' : `${count} places in this release`}
               style={{ '--chip': category.color } as CSSProperties}
             >
               <span className="filter-dot" aria-hidden="true" />
@@ -198,7 +198,7 @@ export function FilterBar({ compact = false }: { compact?: boolean }) {
       {unpopulatedCategories.length > 0 && (
         <p className="filter-empty-note" role="note">
           <strong>Not yet populated:</strong> {unpopulatedCategories.map((category) => category.label).join(', ')}.
-          These categories have no verified records in this central-SF release; their absence is not evidence that the places do not exist.
+          These categories have no verified places in this central-SF release; their absence is not evidence that they do not exist.
         </p>
       )}
       <button type="button" className="link-button filters-toggle" onClick={() => setExpanded((v) => !v)} aria-expanded={expanded}>
@@ -213,7 +213,7 @@ export function FilterBar({ compact = false }: { compact?: boolean }) {
               onChange={(e) => actions.setFilter({ openNow: e.target.checked })}
             />
             Open now
-            <span className="condition-note">Only records with published hours and a check within 90 days can pass.</span>
+            <span className="condition-note">Only places with published hours and a check within 90 days can pass.</span>
           </label>
           <label className={`condition ${state.filters.freeOnly ? 'is-active' : ''}`}>
             <input
@@ -250,7 +250,7 @@ export function FilterBar({ compact = false }: { compact?: boolean }) {
             />
             Accessibility documented
             <span className="condition-note">
-              Installed records contain no documented accessibility details, so this filter returns nothing by design.
+              Installed places contain no documented accessibility details, so this filter returns nothing by design.
             </span>
           </label>
           <label className={`condition ${state.filters.afterDark ? 'is-active' : ''}`}>
@@ -330,9 +330,9 @@ export function NearbyList({ mode = 'nearby' }: { mode?: 'nearby' | 'results' })
     <div className="nearby">
       <div className="nearby-head">
         <div>
-          <p className="eyebrow">{mode === 'nearby' ? 'Nearby, in walking order' : 'All matching records'}</p>
+          <p className="eyebrow">{mode === 'nearby' ? 'Nearby, in walking order' : 'All matching places'}</p>
           <h2>
-            {views.length} {views.length === 1 ? 'record' : 'records'}
+            {views.length} {views.length === 1 ? 'place' : 'places'}
           </h2>
         </div>
         <div className="nearby-head-tools">
@@ -389,7 +389,7 @@ export function NearbyList({ mode = 'nearby' }: { mode?: 'nearby' | 'results' })
         >
           {state.filters.accessibleOnly
             ? 'The accessibility condition is currently impossible: no installed record has documented accessibility details. Night Map will not mark a place accessible without a source.'
-            : 'That can be true for a reason: the release covers a central slice of the city, and some categories have no verified records at all. Widen the walking limit or turn conditions off — and do not read an empty list as “nothing exists here”.'}
+            : 'That can be true for a reason: the release covers a central slice of the city, and some categories have no verified places at all. Widen the walking limit or turn conditions off — and do not read an empty list as “nothing exists here”.'}
         </EmptyState>
       ) : (
         <ul className="nearby-list">
@@ -457,7 +457,7 @@ export function NearbyList({ mode = 'nearby' }: { mode?: 'nearby' | 'results' })
                     className="button ghost tiny"
                     onClick={() => {
                       actions.setFilter({ categories: [view.place.category], maxWalkMinutes: 20 });
-                      actions.notify(`Showing other ${CATEGORY_BY_ID.get(view.place.category)?.label.toLowerCase()} records within a 20-minute walk. Alternatives are possible destinations, not guarantees.`);
+                      actions.notify(`Showing other ${CATEGORY_BY_ID.get(view.place.category)?.label.toLowerCase()} places within a 20-minute walk. Alternatives are possible destinations, not guarantees.`);
                     }}
                   >
                     Alternatives
@@ -491,7 +491,7 @@ export function NearbySummary() {
           <h2>
             {closest.length === 0
               ? 'Nothing passes the current conditions'
-              : `${closest.length} of the closest records`}
+              : `${closest.length} of the closest places`}
           </h2>
         </div>
         <button type="button" className="button ghost small" onClick={() => actions.setWorkspace('nearby')}>

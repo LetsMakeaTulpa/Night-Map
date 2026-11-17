@@ -112,16 +112,16 @@ export function ZoneContextPanel({ coordinates }: Props) {
 
       {summary && (
         <>
-          <div className="zone-metrics" aria-label="Published records in this grid cell">
+          <div className="zone-metrics" aria-label="Published reports in this grid cell">
             <article className="zone-metric">
               <span>Dispatched calls</span>
               <strong>{summary.feedCounts.dispatched_call}</strong>
-              <small>matching records in snapshot</small>
+              <small>matching calls in snapshot</small>
             </article>
             <article className="zone-metric">
               <span>311 service requests</span>
               <strong>{summary.feedCounts.service_request}</strong>
-              <small>matching records in snapshot</small>
+              <small>matching requests in snapshot</small>
             </article>
           </div>
           <section className="zone-source" data-testid="maintenance-summary">
@@ -176,7 +176,7 @@ export function ZoneContextPanel({ coordinates }: Props) {
           A dispatched call is not proof of a crime. A 311 case is not proof of wrongdoing and may be closed.
           Maintenance requests indicate where someone submitted a service request, not a verified outage, ongoing defect,
           neglect finding, danger level or current condition. Counts do not measure danger, predict enforcement, or tell
-          you what is happening now. Zero records means only that this snapshot contains no matching entry.
+          you what is happening now. Zero matches means only that this snapshot contains no matching entry.
         </p>
       </div>
 

@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { ZoneContextPanel } from '../zones/ZoneContextPanel';
 import type { CategoryId, CorrectionReport, FrictionEntry, Observation, ReportIssue } from '../../domain/types';
 import { dataset } from '../../data';
@@ -6,6 +6,7 @@ import { useStore } from '../../state/store';
 import { buildPlaceView } from '../../state/selectors';
 import { formatDate, formatAge, sourcesFor } from '../../domain/status';
 import { formatDistance } from '../../domain/geo';
+import { MESSAGE_UNLOCK_RADIUS_M, messageMarkerState } from '../../domain/messages';
 import { CATEGORY_BY_ID, SERVICE_TYPE_LABELS } from '../../domain/categories';
 import { FRICTION_KIND_LABELS, frictionFor } from '../../domain/friction';
 import { EmptyState, EvidencePill, MetaRow, OpenState, SourceDetails, CategoryMark, PathIcon } from '../ui';
@@ -107,10 +108,26 @@ export function PlaceInspector({ placeId, onClose, onComposeNote }: Props) {
   const [formError, setFormError] = useState<string | null>(null);
   const [lastReport, setLastReport] = useState<CorrectionReport | null>(null);
   const [copied, setCopied] = useState(false);
+  const [, setMessageClock] = useState(0);
   const privateObservation = placeId.startsWith('private:')
     ? state.observations.find((item) => `private:${item.id}` === placeId)
     : undefined;
   const observationTypeLabel = privateObservation ? OBSERVATION_LABELS[privateObservation.type] ?? 'Field observation' : null;
+  const privateMessage = privateObservation?.kind === 'message' ? privateObservation : null;
+
+  // An open message must relock when its fix ages out, not only when some
+  // unrelated state change happens to re-render the inspector.
+  useEffect(() => {
+    if (!privateMessage) return;
+    setMessageClock(Date.now());
+    const timer = window.setInterval(() => setMessageClock(Date.now()), 5_000);
+    return () => window.clearInterval(timer);
+  }, [privateMessage]);
+
+  const messageMarker = privateMessage
+    ? messageMarkerState(privateMessage, state.userLocation, Date.now())
+    : null;
+  const messageLocked = Boolean(privateMessage && messageMarker?.state !== 'nearby');
 
   const observations = useMemo(
     () => state.observations.filter((o) => o.placeId === placeId),
@@ -409,21 +426,50 @@ export function PlaceInspector({ placeId, onClose, onComposeNote }: Props) {
 
         {tab === 'overview' && (
           <div className="stack">
-            <p className="description">{place.description}</p>
-            {privateObservation && <dl className="meta-table">
+            {privateMessage && messageLocked ? (
+              <p className="notice is-error">
+                Locked private message. Move within {MESSAGE_UNLOCK_RADIUS_M} m of its location and use a fresh GPS fix
+                to read it. Message text and photos stay hidden while locked.
+              </p>
+            ) : (
+              <p className="description">{place.description}</p>
+            )}
+            {privateObservation && !privateMessage && <dl className="meta-table">
               <MetaRow label="Observation type">{observationTypeLabel}</MetaRow>
               <MetaRow label="Access">{(privateObservation.accessStatus ?? 'unknown').replaceAll('_', ' ')} — not permission to enter</MetaRow>
               <MetaRow label="Evidence">{(privateObservation.confidence ?? 'unverified').replaceAll('_', ' ')}</MetaRow>
               <MetaRow label="Observed">{formatDate(privateObservation.observedAt)}</MetaRow>
               <MetaRow label="Position">{privateObservation.geometry?.coordinates[1].toFixed(5)}, {privateObservation.geometry?.coordinates[0].toFixed(5)}</MetaRow>
             </dl>}
-            {privateObservation?.photo && <figure className="photo-preview"><img src={privateObservation.photo.dataUrl} alt="Private field observation" /><figcaption>Private photo · metadata stripped</figcaption></figure>}
-            {privateObservation?.sourceReference && <p><a href={privateObservation.sourceReference} target="_blank" rel="noreferrer noopener">Open observation source</a></p>}
-            {privateObservation && <p className="notice">Private local observation; not an accepted or verified place record. Visible only on this device. Verify public access before entry.</p>}
-            {privateObservation && <div className="button-row">
-              <button type="button" className="button" onClick={() => onComposeNote({ placeId: privateObservation.placeId, placeName: privateObservation.placeName, coordinates: privateObservation.geometry?.coordinates ?? null })}>Edit fieldnote</button>
-              <button type="button" className="button ghost" onClick={() => void actions.deleteObservation(privateObservation.id)}>Delete fieldnote</button>
-            </div>}
+            {privateMessage && !messageLocked && <dl className="meta-table">
+              <MetaRow label="Message type">Location-locked private message</MetaRow>
+              <MetaRow label="Presence">
+                {messageMarker?.distanceM === null || messageMarker?.distanceM === undefined
+                  ? 'Nearby'
+                  : `${formatDistance(messageMarker.distanceM, state.settings.units)} away`}
+                {privateMessage.presence ? ` · ±${Math.round(privateMessage.presence.accuracyM)} m fix` : ''}
+              </MetaRow>
+              <MetaRow label="Observed">{formatDate(privateMessage.observedAt)}</MetaRow>
+              <MetaRow label="Position">{privateMessage.geometry?.coordinates[1].toFixed(5)}, {privateMessage.geometry?.coordinates[0].toFixed(5)}</MetaRow>
+            </dl>}
+            {!messageLocked && privateObservation?.photo && <figure className="photo-preview"><img src={privateObservation.photo.dataUrl} alt="Private field observation" /><figcaption>Private photo · metadata stripped</figcaption></figure>}
+            {!messageLocked && privateObservation?.sourceReference && <p><a href={privateObservation.sourceReference} target="_blank" rel="noreferrer noopener">Open observation source</a></p>}
+            {privateObservation && <p className="notice">
+              {privateMessage
+                ? 'Private location-locked message; not an accepted or verified place record. Its text stays hidden while you are away from its location.'
+                : 'Private local observation; not an accepted or verified place record. Visible only on this device. Verify public access before entry.'}
+            </p>}
+            {privateMessage ? (
+              <p className="notice">
+                This message can only be edited or deleted from Messages, under a fresh GPS fix and within{' '}
+                {MESSAGE_UNLOCK_RADIUS_M} m of where it was left. There is no map compose action.
+              </p>
+            ) : privateObservation ? (
+              <div className="button-row">
+                <button type="button" className="button" onClick={() => onComposeNote({ placeId: privateObservation.placeId, placeName: privateObservation.placeName, coordinates: privateObservation.geometry?.coordinates ?? null })}>Edit fieldnote</button>
+                <button type="button" className="button ghost" onClick={() => void actions.deleteObservation(privateObservation.id)}>Delete fieldnote</button>
+              </div>
+            ) : null}
 
             {localOverride && (
               <section className="local-override" aria-label="Local correction">
@@ -801,7 +847,7 @@ export function CompareTray() {
   return (
     <section className="compare-tray">
       <div className="compare-head">
-        <h3>Compare records</h3>
+        <h3>Compare places</h3>
         <button type="button" className="link-button" onClick={actions.clearCompare}>
           Clear
         </button>

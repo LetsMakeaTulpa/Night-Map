@@ -35,8 +35,8 @@ export function MapTargetsPanel({
   const targets: Target[] = [
     {
       layer: 'resources',
-      label: 'Place records',
-      detail: 'Food, water, restrooms, services and civic records',
+      label: 'Places',
+      detail: 'Food, water, restrooms, services and civic places',
       count: isOn('resources') ? filteredPlaceCount : undefined,
     },
     {
@@ -48,7 +48,7 @@ export function MapTargetsPanel({
     {
       layer: 'abandoned-buildings',
       label: 'Abandoned & vacant buildings',
-      detail: 'City vacancy records with a published point, blue glow',
+      detail: 'City vacancy notices with a published point, blue glow',
       count: isOn('abandoned-buildings') ? loaded(liveCounts.abandoned) : undefined,
     },
     {
@@ -157,7 +157,7 @@ export function MapTargetsPanel({
                   <span
                     className="target-count"
                     aria-label={
-                      typeof target.count === 'number' ? `${target.count} records` : 'not loaded or hidden'
+                      typeof target.count === 'number' ? `${target.count} places` : 'not loaded or hidden'
                     }
                   >
                     {typeof target.count === 'number' ? target.count.toLocaleString() : '—'}
@@ -170,7 +170,7 @@ export function MapTargetsPanel({
       )}
 
       <p className="targets-foot">
-        Counts describe the records available in each visible layer under your current filters. A dash means the
+        Counts describe the places available in each visible layer under your current filters. A dash means the
         layer is off or its data is still loading. Toggling a target changes only this view, and private targets never
         leave this device.
       </p>

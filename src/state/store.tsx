@@ -57,6 +57,8 @@ import {
   storageMode,
 } from '../services/storage';
 import { fetchWalkingRoute, RoutingError, straightLineFallback } from '../services/routing';
+import { PresenceError, requirePresence } from '../services/presence';
+import { isFixAccurate, isFixFresh } from '../domain/messages';
 import { LAYERS } from '../map/layers';
 
 export interface UserLocation {
@@ -190,6 +192,11 @@ const placeToStop = (place: Place): RouteStop => ({
   coordinates: place.geometry.coordinates,
 });
 
+export interface PrivateMessageInput {
+  note: string;
+  photo: Observation['photo'];
+}
+
 export interface ObservationInput {
   placeId: string | null;
   placeName: string | null;
@@ -228,6 +235,9 @@ interface StoreValue {
     toggleSaved: (placeId: string) => Promise<void>;
     setSavedNote: (placeId: string, note: string) => Promise<void>;
     createObservation: (input: ObservationInput) => Promise<Observation>;
+    createPrivateMessage: (input: PrivateMessageInput) => Promise<Observation>;
+    updatePrivateMessage: (id: string, input: PrivateMessageInput) => Promise<void>;
+    deletePrivateMessage: (id: string) => Promise<void>;
     selectObservation: (id: string) => void;
     updateObservation: (observation: Observation) => Promise<void>;
     deleteObservation: (id: string) => Promise<void>;
@@ -250,7 +260,7 @@ interface StoreValue {
     moveRouteStop: (index: number, direction: -1 | 1) => void;
     setRouteOrigin: (stop: RouteStop | null) => void;
     setPicking: (value: 'origin' | 'stop' | null) => void;
-    useCurrentLocation: () => Promise<void>;
+    useCurrentLocation: (options?: { setRouteOrigin?: boolean }) => Promise<UserLocation | null>;
     startGpsLock: () => void;
     stopGpsLock: () => void;
     toggleGpsLock: () => void;
@@ -341,14 +351,28 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const actions = useMemo<StoreValue['actions']>(() => {    const setFilter = (patch: Partial<Filters>) =>
       setState((s) => ({ ...s, filters: { ...s.filters, ...patch } }));
 
+    const userLocationFrom = (position: GeolocationPosition): UserLocation => ({
+      coordinates: [position.coords.longitude, position.coords.latitude],
+      accuracy: position.coords.accuracy,
+      // Use the provider's timestamp, not the callback time. Stamping an old
+      // cached fix with Date.now() would make it look fresh to the message lock.
+      at: Number(position.timestamp),
+    });
+
+    const grantLocationPermission = () => {
+      const current = settingsRef.current;
+      if (current.locationPermission === 'granted') return current;
+      const next = { ...current, locationPermission: 'granted' as const };
+      settingsRef.current = next;
+      void saveSettings(next);
+      return next;
+    };
+
     const applyGpsFix = (position: GeolocationPosition) => {
-      const location: UserLocation = {
-        coordinates: [position.coords.longitude, position.coords.latitude],
-        accuracy: position.coords.accuracy,
-        at: Date.now(),
-      };
-      const grantedSettings = { ...settingsRef.current, locationPermission: 'granted' as const };
-      settingsRef.current = grantedSettings;
+      // A callback queued just before clearWatch must not turn the lock back on.
+      if (locationWatch.current === null) return;
+      const location = userLocationFrom(position);
+      const grantedSettings = grantLocationPermission();
       setState((s) => ({
         ...s,
         userLocation: location,
@@ -358,7 +382,6 @@ export function AppProvider({ children }: { children: ReactNode }) {
       }));
       if (gpsFirstFix.current) {
         gpsFirstFix.current = false;
-        void saveSettings(grantedSettings);
         notify(`GPS lock on · ±${Math.round(location.accuracy)} m. The map will follow this device until you drag it.`, 'success');
       }
     };
@@ -408,7 +431,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
             'warn',
           );
         },
-        { enableHighAccuracy: true, timeout: 15_000, maximumAge: 5_000 },
+        { enableHighAccuracy: true, timeout: 20_000, maximumAge: 0 },
       );
     };
 
@@ -491,7 +514,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
             ],
             resources: ['streets', 'street-labels', 'parks', 'resources', 'neighbourhoods', 'transit-stops'],
             transit: ['streets', 'street-labels', 'parks', 'transit-stops', 'transit-lines', 'neighbourhoods'],
-            notes: ['streets', 'street-labels', 'parks', 'observations', 'saved', 'resources'],
+            notes: ['streets', 'street-labels', 'parks', 'observations', 'private-messages', 'saved', 'resources'],
             incidents: [
               'streets',
               'street-labels',
@@ -612,7 +635,108 @@ export function AppProvider({ children }: { children: ReactNode }) {
         );
         return observation;
       },
+      createPrivateMessage: async (input) => {
+        const fix = await requirePresence();
+        const grantedSettings = grantLocationPermission();
+        const now = new Date().toISOString();
+        const message: Observation = {
+          id: uid('msg'),
+          kind: 'message',
+          presence: { accuracyM: fix.accuracyM, distanceM: 0, verifiedAt: fix.verifiedAt },
+          placeId: null,
+          placeName: 'Private message',
+          geometry: { type: 'Point', coordinates: fix.coordinates },
+          type: 'other',
+          note: input.note.trim(),
+          observedAt: now,
+          recordedAt: now,
+          photo: input.photo,
+          accessStatus: 'unknown',
+          confidence: 'unverified',
+          visibility: 'private',
+          verificationStatus: 'unverified',
+          updatedAt: now,
+        };
+        await writeOne('observations', message);
+        setState((s) => ({
+          ...s,
+          observations: [message, ...s.observations],
+          userLocation: { coordinates: fix.coordinates, accuracy: fix.accuracyM, at: fix.timestamp },
+          reference: { coordinates: fix.coordinates, label: 'Your location (this session only)' },
+          settings: grantedSettings,
+        }));
+        notify('Private message left at this location.', 'success');
+        return message;
+      },
+      updatePrivateMessage: async (id, input) => {
+        // Take the stored message, not the caller's copy, so a stale object
+        // cannot replace its anchor or other fields during an edit.
+        const message = state.observations.find((entry) => entry.id === id);
+        if (!message || message.kind !== 'message' || !message.geometry) {
+          throw new PresenceError(
+            'no_anchor',
+            'This record has no message anchor, so it cannot be edited as a message.',
+          );
+        }
+        const fix = await requirePresence(message.geometry.coordinates);
+        const grantedSettings = grantLocationPermission();
+        const updated: Observation = {
+          ...message,
+          presence: {
+            accuracyM: fix.accuracyM,
+            distanceM: fix.locationDistanceM ?? 0,
+            verifiedAt: fix.verifiedAt,
+          },
+          note: input.note.trim(),
+          photo: input.photo,
+          updatedAt: new Date().toISOString(),
+        };
+        await writeOne('observations', updated);
+        setState((s) => ({
+          ...s,
+          observations: s.observations.map((entry) => (entry.id === id ? updated : entry)),
+          userLocation: { coordinates: fix.coordinates, accuracy: fix.accuracyM, at: fix.timestamp },
+          settings: grantedSettings,
+        }));
+        notify('Private message updated at its location.', 'success');
+      },
+      deletePrivateMessage: async (id) => {
+        const message = state.observations.find((entry) => entry.id === id);
+        if (!message) return;
+        if (message.kind !== 'message' || !message.geometry) {
+          throw new PresenceError(
+            'no_anchor',
+            'This record has no message anchor, so it cannot be deleted as a message.',
+          );
+        }
+        const fix = await requirePresence(message.geometry.coordinates);
+        const grantedSettings = grantLocationPermission();
+        await deleteOne('observations', id);
+        setState((s) => ({
+          ...s,
+          observations: s.observations.filter((entry) => entry.id !== id),
+          selectedPlaceId: s.selectedPlaceId === `private:${id}` ? null : s.selectedPlaceId,
+          userLocation: { coordinates: fix.coordinates, accuracy: fix.accuracyM, at: fix.timestamp },
+          settings: grantedSettings,
+          collections: s.collections.map((collection) => ({
+            ...collection,
+            itemRefs: collection.itemRefs.filter(
+              (ref) => !(ref.kind === 'observation' && ref.id === id),
+            ),
+          })),
+        }));
+        notify('Private message deleted.', 'success');
+      },
       updateObservation: async (observation) => {
+        // Check the stored record as well as the caller's copy: removing the
+        // kind field from a message must not turn it into an editable note.
+        const stored = state.observations.find((entry) => entry.id === observation.id);
+        if (observation.kind === 'message' || stored?.kind === 'message') {
+          throw new PresenceError(
+            'no_anchor',
+            'Private messages can only be changed through the location-locked Messages tool.',
+          );
+        }
         const updated = { ...observation, updatedAt: new Date().toISOString() };
         await writeOne('observations', updated);
         setState((s) => ({
@@ -622,6 +746,12 @@ export function AppProvider({ children }: { children: ReactNode }) {
         notify('Field note updated.', 'success');
       },
       deleteObservation: async (id) => {
+        if (state.observations.find((observation) => observation.id === id)?.kind === 'message') {
+          throw new PresenceError(
+            'no_anchor',
+            'Private messages can only be deleted through the location-locked Messages tool.',
+          );
+        }
         await deleteOne('observations', id);
         setState((s) => ({
           ...s,
@@ -975,42 +1105,46 @@ export function AppProvider({ children }: { children: ReactNode }) {
       stopGpsLock: () => stopGpsLock(),
       toggleGpsLock: () => (state.gpsLocked ? stopGpsLock() : startGpsLock()),
 
-      useCurrentLocation: async () => {
+      useCurrentLocation: async (options) => {
         if (typeof navigator === 'undefined' || !navigator.geolocation) {
           notify('This browser does not expose location.', 'warn');
-          return;
+          return null;
         }
         if (!window.isSecureContext) {
           notify('Location needs a secure (https or localhost) context.', 'warn');
-          return;
+          return null;
         }
-        await new Promise<void>((resolve) => {
+        return await new Promise<UserLocation | null>((resolve) => {
           navigator.geolocation.getCurrentPosition(
             (position) => {
-              const location: UserLocation = {
-                coordinates: [position.coords.longitude, position.coords.latitude],
-                accuracy: position.coords.accuracy,
-                at: Date.now(),
-              };
-              const grantedSettings = { ...settingsRef.current, locationPermission: 'granted' as const };
-              settingsRef.current = grantedSettings;
+              const location = userLocationFrom(position);
+              const grantedSettings = grantLocationPermission();
               setState((s) => ({
                 ...s,
                 userLocation: location,
                 reference: { coordinates: location.coordinates, label: 'Your location (this session only)' },
                 settings: grantedSettings,
-                route: {
-                  ...s.route,
-                  origin:
-                    s.route.picking === 'origin' || !s.route.origin
-                      ? { label: 'Current location', placeId: null, coordinates: location.coordinates }
-                      : s.route.origin,
-                  picking: null,
-                },
+                // A general location refresh should not rewrite route planning.
+                // Only the route panel opts in, and never from a stale reading.
+                route: options?.setRouteOrigin && isFixFresh(location)
+                  ? {
+                      ...s.route,
+                      origin:
+                        s.route.picking === 'origin' || !s.route.origin
+                          ? { label: 'Current location', placeId: null, coordinates: location.coordinates }
+                          : s.route.origin,
+                      picking: null,
+                    }
+                  : s.route,
               }));
-              void saveSettings(grantedSettings);
-              notify(`Location fixed to ±${Math.round(location.accuracy)} m. Not saved or shared.`, 'success');
-              resolve();
+              if (!isFixFresh(location)) {
+                notify('Location fixed, but this reading is stale. Move into the open and try again.', 'warn');
+              } else if (!isFixAccurate(location)) {
+                notify(`Location fixed to ±${Math.round(location.accuracy)} m. This is too imprecise for private messages.`, 'warn');
+              } else {
+                notify(`Location fixed to ±${Math.round(location.accuracy)} m. Not saved or shared.`, 'success');
+              }
+              resolve(location);
             },
             (error) => {
               setState((s) => ({
@@ -1026,9 +1160,9 @@ export function AppProvider({ children }: { children: ReactNode }) {
                   : 'Could not get a location fix. You can set an origin from search or the map.',
                 'warn',
               );
-              resolve();
+              resolve(null);
             },
-            { enableHighAccuracy: false, timeout: 12_000, maximumAge: 60_000 },
+            { enableHighAccuracy: true, timeout: 20_000, maximumAge: 0 },
           );
         });
       },

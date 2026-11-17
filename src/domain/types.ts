@@ -226,8 +226,20 @@ export interface ObservationPhoto {
   metadataStripped: true;
 }
 
+export interface MessagePresence {
+  /** Accuracy of the fresh fix that authorised the write. */
+  accuracyM: number;
+  /** Distance from the anchor at write time; 0 for a new message. */
+  distanceM: number;
+  verifiedAt: string;
+}
+
 export interface Observation {
   id: string;
+  /** Messages are location-locked private notes; older notes have no kind. */
+  kind?: 'message' | 'fieldnote' | 'verification';
+  /** Present on messages written or edited under the location lock. */
+  presence?: MessagePresence;
   placeId: string | null;
   placeName: string | null;
   geometry: PointGeometry | null;
@@ -414,6 +426,7 @@ export type Workspace =
   | 'nearby'
   | 'buildings'
   | 'routes'
+  | 'messages'
   | 'fieldnotes'
   | 'library'
   | 'atlas'

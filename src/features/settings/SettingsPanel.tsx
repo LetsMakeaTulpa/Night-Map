@@ -30,7 +30,7 @@ export function SettingsPanel({ onClose }: { onClose: () => void }) {
     link.download = `night-map-personal-${new Date().toISOString().slice(0, 10)}.json`;
     link.click();
     URL.revokeObjectURL(url);
-    actions.notify('Exported your on-device records as JSON. It includes private notes — check before sharing.', 'warn');
+    actions.notify('Exported your on-device data as JSON. It includes private notes — check before sharing.', 'warn');
   };
 
   const clearCaches = async () => {
@@ -81,7 +81,7 @@ export function SettingsPanel({ onClose }: { onClose: () => void }) {
               <option value="photon">Also allow Photon citywide lookup</option>
             </select>
             <span className="field-foot">
-              Wider lookup sends the address you type to photon.komoot.io. Results are pins, not records.
+              Wider lookup sends the address you type to photon.komoot.io. Results are pins, not verified places.
             </span>
           </label>
           <label className="field">
@@ -146,7 +146,7 @@ export function SettingsPanel({ onClose }: { onClose: () => void }) {
         </summary>
         <div className="drawer-group-body">
           <p className="group-note">
-            Basemap, records and sources are bundled. Caches fill after the first load; routing and wider address lookup
+            Basemap, data and sources are bundled. Caches fill after the first load; routing and wider address lookup
             always need a connection.
           </p>
           <dl className="meta-table">
@@ -183,7 +183,7 @@ export function SettingsPanel({ onClose }: { onClose: () => void }) {
 
       <details className="drawer-group">
         <summary>
-          <span>Your records</span>
+          <span>Your data</span>
         </summary>
         <div className="drawer-group-body">
           <p className="group-note">

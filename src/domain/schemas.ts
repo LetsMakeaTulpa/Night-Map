@@ -364,6 +364,14 @@ export const routePlanSchema = z.object({
 
 export const observationSchema = z.object({
   id: z.string(),
+  kind: z.enum(['message', 'fieldnote', 'verification']).optional(),
+  presence: z
+    .object({
+      accuracyM: z.number(),
+      distanceM: z.number(),
+      verifiedAt: z.string(),
+    })
+    .optional(),
   placeId: z.string().nullable(),
   placeName: z.string().nullable(),
   geometry: point.nullable(),

@@ -37,13 +37,18 @@ export function FieldnotesWorkspace() {
 
   const selectedPlace = state.selectedPlaceId ? dataset.placeById.get(state.selectedPlaceId) : null;
 
+  const fieldnotes = useMemo(
+    () => state.observations.filter((observation) => observation.kind !== 'message'),
+    [state.observations],
+  );
+
   const observations = useMemo(() => {
-    return state.observations
+    return fieldnotes
       .filter((o) =>
         filter === 'linked' ? Boolean(o.placeId || o.buildingId) : filter === 'pinned' ? !o.placeId && !o.buildingId : true,
       )
       .sort((a, b) => b.observedAt.localeCompare(a.observedAt));
-  }, [state.observations, filter]);
+  }, [fieldnotes, filter]);
 
   const placeHits = useMemo(
     () => (placeQuery.trim().length >= 2 ? searchLocal(placeQuery, dataset.data, 5).filter((h) => h.placeId) : []),
@@ -91,8 +96,8 @@ export function FieldnotesWorkspace() {
           <p className="eyebrow">Fieldnotes</p>
           <h2>Your observations</h2>
           <p className="muted small">
-            {state.observations.length} private {state.observations.length === 1 ? 'note' : 'notes'} on this device.
-            Nothing here is published, and nothing is sent anywhere.
+            {fieldnotes.length} private {fieldnotes.length === 1 ? 'note' : 'notes'} on this device. Nothing here is
+            published, and nothing is sent anywhere. Location-locked messages live in Messages.
           </p>
         </div>
       </header>

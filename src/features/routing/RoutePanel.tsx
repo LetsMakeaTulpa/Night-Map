@@ -57,7 +57,7 @@ export function RoutePanel() {
           </div>
         ) : (
           <div className="origin-choices">
-            <button type="button" className="button" onClick={() => void actions.useCurrentLocation()}>
+            <button type="button" className="button" onClick={() => void actions.useCurrentLocation({ setRouteOrigin: true })}>
               <PathIcon path="M12 3.5 20 12l-8 8.5L4 12z" /> Use current location
             </button>
             <button
@@ -200,7 +200,7 @@ export function RoutePanel() {
         </button>
         {!online && (
           <p className="notice warn">
-            You are offline. Route planning needs the routing service; saved routes and records are still available.
+            You are offline. Route planning needs the routing service; saved routes and notes are still available.
           </p>
         )}
         {route.status === 'error' && (

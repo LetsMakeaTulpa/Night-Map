@@ -7,6 +7,7 @@ import { PlaceInspector, CompareTray } from '../place/PlaceInspector';
 import { NearbyList, SearchBar } from '../discovery/Discovery';
 import { RoutePanel } from '../routing/RoutePanel';
 import { FieldnotesWorkspace } from '../fieldnotes/FieldnotesWorkspace';
+import { MessagesWorkspace } from '../messages/MessagesWorkspace';
 import { BuildingsWorkspace } from '../buildings/BuildingsWorkspace';
 import { BuildingDossier } from '../buildings/BuildingDossier';
 import { LibraryWorkspace } from '../library/LibraryWorkspace';
@@ -22,6 +23,7 @@ import { isOpenReport } from '../../domain/verification';
 
 const WORKSPACES = [
   { id: 'nearby', label: 'Nearby', icon: 'M12 3.5 20 12l-8 8.5L4 12z' },
+  { id: 'messages', label: 'Messages', icon: 'M4 5h16v11H9l-5 4V5Z' },
   { id: 'fieldnotes', label: 'Field map', icon: 'M5 3.5h11l3 3v14H5zM8.5 11h7M8.5 15h5' },
   { id: 'routes', label: 'Routes', icon: 'M5 19 19 5M11 5h8v8' },
   { id: 'buildings', label: 'Buildings', icon: 'M3.5 21h17M5.5 21V8l6.5-4.5L18.5 8v13M9 11h1.5M13.5 11H15M9 15h1.5M13.5 15H15' },
@@ -121,12 +123,9 @@ export function AppShell() {
     setSearchOpen(false);
   };
 
-  const quickNote = () => {
-    setComposeTarget({
-      placeId: selectedPlace?.id ?? null,
-      placeName: selectedPlace?.name ?? 'Pinned observation at map centre',
-      coordinates: selectedPlace?.geometry.coordinates ?? state.reference.coordinates,
-    });
+  const openMessages = () => {
+    openWorkspace('messages');
+    setDesktopPanelOpen(true);
   };
 
   // Command palette
@@ -196,6 +195,8 @@ export function AppShell() {
         return <FeedsWorkspace kind="radio" />;
       case 'routes':
         return <RoutePanel />;
+      case 'messages':
+        return <MessagesWorkspace />;
       case 'fieldnotes':
         return <FieldnotesWorkspace />;
       case 'buildings':
@@ -217,7 +218,7 @@ export function AppShell() {
     <span className="coverage-chip" title={dataset.data.meta.footprint.note}>
       {dataset.data.meta.footprint.name}
       <span className="coverage-dot" aria-hidden="true" />
-      {dataset.data.meta.counts.places} records
+      {dataset.data.meta.counts.places} places
     </span>
   );
 
@@ -225,7 +226,7 @@ export function AppShell() {
     <div className="offline-bar" role="status">
       <strong>Offline</strong>
       <span>
-        Bundled records from {formatDate(dataset.data.meta.generatedAt)} are available, with saved places and your notes.
+        Bundled places from {formatDate(dataset.data.meta.generatedAt)} are available, with saved places and your notes.
         Routing and wider address search will not work.
       </span>
     </div>
@@ -271,7 +272,7 @@ export function AppShell() {
               {workspace.id === 'review' && openReportCount > 0 && <span className="nav-badge">{openReportCount}</span>}
             </button>
           ))}
-          <button type="button" className="edge-rail-button" onClick={quickNote} aria-label="New field note" title="New field note"><PathIcon path="M5 3.5h11l3 3v14H5zM8.5 11h7M8.5 15h5" /></button>
+          <button type="button" className="edge-rail-button" onClick={openMessages} aria-label="Private messages" title="Private messages"><PathIcon path="M4 5h16v11H9l-5 4V5Z" /></button>
         </nav>
 
         <nav className="desktop-edge-rail desktop-edge-rail-right" aria-label="Map tools">
@@ -317,7 +318,7 @@ export function AppShell() {
         {searchOpen && <div className="mobile-search desktop-search" role="dialog" aria-label="Night Map search panel">
           <div className="mobile-search-head"><SearchBar autoFocus onNavigate={() => setSearchOpen(false)} />
             <button type="button" className="button ghost small" onClick={() => setSearchOpen(false)}>Close</button></div>
-          <p className="muted small">Search installed records, streets and Muni stops in the central-SF footprint.</p>
+          <p className="muted small">Search installed places, streets and Muni stops in the central-SF footprint.</p>
         </div>}
         {layersOpen && <Overlay side="right" onClose={() => setLayersOpen(false)}><LayerDrawer onClose={() => setLayersOpen(false)} /></Overlay>}
         {settingsOpen && <Overlay side="right" onClose={() => setSettingsOpen(false)}><SettingsPanel onClose={() => setSettingsOpen(false)} /></Overlay>}
@@ -332,7 +333,7 @@ export function AppShell() {
             else if (command === 'settings') setSettingsOpen(true);
             else if (command === 'clear') actions.resetFilters();
             else if (command === 'export') void import('../../services/storage').then((m) => m.exportPersonalData());
-            else if (command === 'compose') quickNote();
+            else if (command === 'compose') { openWorkspace('messages'); setDesktopPanelOpen(true); }
             else { openWorkspace(command as WorkspaceId); setDesktopPanelOpen(true); }
           }} />}
         <Toast />
@@ -388,7 +389,7 @@ export function AppShell() {
         </div>
         <div className="mobile-status">
           {!online && <span className="offline-chip">Offline · saved data</span>}
-          {online && <span className="online-chip">Field release · {dataset.data.meta.counts.places} records</span>}
+          {online && <span className="online-chip">Field release · {dataset.data.meta.counts.places} places</span>}
           <span className="privacy-chip">No account · no tracking</span>
         </div>
       </header>
@@ -399,8 +400,8 @@ export function AppShell() {
         <MapView views={views} onOpenLayers={() => setLayersOpen(true)} />
       </main>
 
-      <button type="button" className="quick-note-fab" onClick={quickNote} aria-label="Quick field note">
-        <PathIcon path="M5 3.5h11l3 3v14H5zM8.5 11h7M8.5 15h5" size={22} />
+      <button type="button" className="quick-note-fab" onClick={openMessages} aria-label="Private messages">
+        <PathIcon path="M4 5h16v11H9l-5 4V5Z" size={22} />
       </button>
 
       <section
@@ -435,7 +436,7 @@ export function AppShell() {
           {state.sheet === 'collapsed' && !selectedPlace && (
             <div className="sheet-collapsed-title">
               <strong>Nearby</strong>
-              <span>{views.length} records pass the current filters</span>
+              <span>{views.length} places pass the current filters</span>
             </div>
           )}
         </div>
@@ -496,7 +497,7 @@ export function AppShell() {
             </button>
           </div>
           <p className="muted small">
-            The index covers installed records, streets and Muni stops in central SF. It is not a citywide geocoder.
+            The index covers installed places, streets and Muni stops in central SF. It is not a citywide geocoder.
           </p>
         </div>
       )}
@@ -566,7 +567,7 @@ function CommandPalette({
     { id: 'fieldnotes', label: 'Go to Fieldnotes' },
     { id: 'atlas', label: 'Go to Atlas' },
     { id: 'review', label: 'Go to Review' },
-    { id: 'compose', label: 'New field note' },
+    { id: 'compose', label: 'Private messages' },
     { id: 'layers', label: 'Open layers' },
     { id: 'settings', label: 'Open settings & privacy' },
     { id: 'clear', label: 'Clear all filters' },

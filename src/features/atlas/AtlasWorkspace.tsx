@@ -38,7 +38,7 @@ const FIELD_LIBRARY_GROUPS = [
   { id: 'transit', label: 'Transit' },
   { id: 'resources', label: 'Community resources' },
   { id: 'city-data', label: 'City datasets' },
-  { id: 'city-records', label: 'Property & planning records' },
+  { id: 'city-records', label: 'Property & planning' },
   { id: 'history', label: 'History & infrastructure context' },
   { id: 'archives', label: 'Archives & research' },
   { id: 'community', label: 'Community organizations' },
@@ -141,7 +141,7 @@ export function AtlasWorkspace() {
           <p className="eyebrow">Atlas</p>
           <h2>Discoveries & context</h2>
           <p className="muted small">
-            Curated guides, private collections and source-backed discoveries. The map now includes {dataset.categoryCounts.popos ?? 0} City-listed POPOS records in the installed footprint, with access and freshness limitations shown on each card.
+            Curated guides, private collections and source-backed discoveries. The map now includes {dataset.categoryCounts.popos ?? 0} City-listed POPOS places in the installed footprint, with access and freshness limitations shown on each card.
           </p>
         </div>
       </header>
@@ -427,7 +427,7 @@ export function AtlasWorkspace() {
                 </select>
               </label>
             </div>
-            <p className="muted small" aria-live="polite">Showing {filtered.length} of {FIELD_LIBRARY.length} references. Primary city/data/archive records are labeled separately from community and news sources.</p>
+            <p className="muted small" aria-live="polite">Showing {filtered.length} of {FIELD_LIBRARY.length} references. Primary city/data/archive sources are labeled separately from community and news sources.</p>
             {filtered.length === 0 ? <EmptyState title="No sources match">Try a different search or group.</EmptyState> : (
               <ul className="field-library-list">
                 {filtered.map((entry) => (
@@ -471,9 +471,9 @@ export function AtlasWorkspace() {
                 </dd>
               </div>
               <div className="meta-row">
-                <dt>Installed records</dt>
+                <dt>Installed data</dt>
                 <dd>
-                  {counts.places} places · {counts.resources} resource records · {counts.transitStops} Muni stops ·{' '}
+                  {counts.places} places · {counts.resources} resources · {counts.transitStops} Muni stops ·{' '}
                   {counts.historicFeatures} historic features
                 </dd>
               </div>
@@ -521,7 +521,7 @@ export function AtlasWorkspace() {
               <li>Field notes are private and stored in this browser’s IndexedDB.</li>
               <li>Location is a single, opt-in fix held in memory for the session; nothing is logged or shared.</li>
               <li>Photos are re-encoded locally to strip EXIF/GPS before storage.</li>
-              <li>Deleting your records is a real delete from this device, not a hidden flag.</li>
+              <li>Deleting your data is a real delete from this device, not a hidden flag.</li>
             </ul>
           </section>
           <section>
@@ -530,7 +530,7 @@ export function AtlasWorkspace() {
               <li>Routing depends on a public demo service and needs a connection.</li>
               <li>No live arrivals, opening status, bed counts or stock counts.</li>
               <li>No accessibility data in the City asset inventory, so none is claimed.</li>
-              <li>Laundry, showers and phone charging have no verified records in this release.</li>
+              <li>Laundry, showers and phone charging have no verified places in this release.</li>
               <li>
                 Cost and friction lines are only as good as the page they name. Where a provider publishes no fee, no ID
                 rule or no hours, the record says the source does not say, rather than filling the gap.

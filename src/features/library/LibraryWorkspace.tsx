@@ -236,10 +236,10 @@ export function LibraryWorkspace() {
                 </dd>
               </div>
               <div className="meta-row">
-                <dt>Records</dt>
+                <dt>Installed data</dt>
                 <dd>
-                  {counts.places} places · {counts.resources} resource records · {counts.transitStops} Muni stops ·{' '}
-                  {counts.buildings} building records (loaded on demand)
+                  {counts.places} places · {counts.resources} resources · {counts.transitStops} Muni stops ·{' '}
+                  {counts.buildings} building dossiers (loaded on demand)
                 </dd>
               </div>
               <div className="meta-row">
@@ -259,7 +259,7 @@ export function LibraryWorkspace() {
               <li>Field notes and collections are private and stored in this browser’s IndexedDB.</li>
               <li>GPS lock is opt-in and held in memory for the session; nothing is logged or shared.</li>
               <li>Photos are re-encoded locally to strip EXIF/GPS before storage.</li>
-              <li>Deleting your records is a real delete from this device, not a hidden flag.</li>
+              <li>Deleting your data is a real delete from this device, not a hidden flag.</li>
             </ul>
           </section>
           <section>
@@ -267,8 +267,8 @@ export function LibraryWorkspace() {
             <ul className="plain-list">
               <li>Routing depends on a public demo service and needs a connection.</li>
               <li>No live arrivals, opening status, bed counts or stock counts.</li>
-              <li>Laundry, showers and phone charging have no verified records in this release.</li>
-              <li>Building records classify City records, not current occupancy.</li>
+              <li>Laundry, showers and phone charging have no verified places in this release.</li>
+              <li>Building dossiers classify City records, not current occupancy.</li>
               <li>No camera, kiosk or sensor locations are plotted because no official public register publishes them.</li>
             </ul>
           </section>

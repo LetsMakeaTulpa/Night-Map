@@ -753,31 +753,6 @@ body.is-resizing {
   border-radius: 50%;
 }
 
-.map-recenter {
-  position: absolute;
-  top: 330px;
-  right: 12px;
-  z-index: 4;
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  padding: 7px 10px;
-  border-radius: 999px;
-  border: var(--border-w) solid var(--line);
-  background: rgba(16, 24, 30, 0.94);
-  color: var(--text-2);
-  font-size: 11px;
-  backdrop-filter: blur(6px);
-}
-
-.map-recenter svg {
-  width: 14px;
-  height: 14px;
-  fill: none;
-  stroke: currentColor;
-  stroke-width: 1.8;
-}
-
 .map-legend-strip {
   position: absolute;
   left: 12px;
@@ -1258,11 +1233,41 @@ body.is-resizing {
 .desktop-panel-search { padding: 12px 14px 0; }
 .desktop-search { position: absolute; z-index: 40; top: 70px; left: 72px; width: min(560px, calc(100vw - 144px)); }
 .app-map-first .map-controls { left: 72px; right: auto; align-items: flex-start; top: 76px; }
-.app-map-first .map-recenter { left: 72px; right: auto; top: 420px; }
 .app-map-first .mini-map-widget { right: 72px; top: 76px; }
 .app-map-first .legend { left: 120px; right: auto; top: 76px; }
 @media (max-width: 1100px) {
   .desktop-edge-panel { width: min(340px, calc(100vw - 96px)); }
   .app-map-first .mini-map-widget { width: 156px; }
   .app-map-first .map-topline { left: 72px; max-width: calc(100vw - 150px); flex-wrap: wrap; }
+}
+
+.message-gps-card {
+  display: flex; justify-content: space-between; align-items: flex-start; gap: 14px;
+  padding: 13px 14px; margin: 12px 0; border: 1px solid var(--line);
+  border-radius: 12px; background: rgba(100, 112, 124, .1);
+}
+.message-gps-card.is-ready { border-color: rgba(224, 164, 88, .42); background: rgba(224, 164, 88, .08); }
+.message-gps-card p { margin: 4px 0 0; }
+.message-gps-card .button-row { justify-content: flex-end; flex-wrap: wrap; }
+.message-gps-note {
+  padding: 12px 14px; margin-bottom: 14px; border-left: 3px solid var(--accent);
+  background: rgba(185, 165, 237, .08); border-radius: 0 10px 10px 0;
+}
+.message-gps-note p { margin: 5px 0 0; }
+.message-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 10px; }
+.message-card { padding: 13px 14px; border: 1px solid var(--line); border-radius: 12px; background: var(--ink-1); }
+.message-card.is-locked { opacity: .82; border-style: dashed; }
+.message-card.is-nearby { border-color: rgba(224, 164, 88, .5); background: rgba(224, 164, 88, .06); }
+.message-head { display: flex; justify-content: space-between; align-items: center; gap: 10px; margin-bottom: 8px; }
+.message-state { font-size: 10px; letter-spacing: .12em; text-transform: uppercase; font-weight: 600; }
+.message-state.is-nearby { color: #F0C674; }
+.message-state.is-locked { color: var(--text-3); }
+.message-distance { color: #F0C674; font-size: 12px; }
+.message-locked-copy { color: var(--text-2); }
+.message-card img { max-width: 100%; border-radius: 8px; margin: 8px 0; }
+.message-composer textarea { min-height: 120px; resize: vertical; }
+.notice.is-error { border-color: rgba(217, 108, 79, .55); color: #F0B7A6; }
+@media (max-width: 720px) {
+  .message-gps-card { flex-direction: column; }
+  .message-gps-card .button-row { justify-content: flex-start; }
 }

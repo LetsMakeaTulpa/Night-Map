@@ -121,6 +121,16 @@ export const LAYERS: (LayerDefinition & { defaultOpacity?: number })[] = [
     offline: 'bundled',
   },
   {
+    id: 'private-messages',
+    name: 'Private messages',
+    description:
+      'Location-locked messages left on this device. Gold marks one that is nearby; grey marks one that is locked until you return with a fresh GPS fix.',
+    group: 'personal',
+    sourceIds: [],
+    defaultVisible: true,
+    offline: 'bundled',
+  },
+  {
     id: 'calls-recent',
     name: 'Dispatched calls (live, 10-min delay)',
     description:
