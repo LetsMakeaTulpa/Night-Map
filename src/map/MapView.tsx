@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import maplibregl, { type Map as MapLibreMap, type MapGeoJSONFeature } from 'maplibre-gl';
 import 'maplibre-gl/dist/maplibre-gl.css';
-import { buildStyle, EMPTY_FC } from './style';
+import { buildStyle, COVERAGE_BBOX, EMPTY_FC } from './style';
 import { buildMarkerImages, buildLocationDot } from './icons';
 import { useStore } from '../state/store';
 import { CATEGORIES, SWATCH } from '../domain/categories';
@@ -59,6 +59,7 @@ const TERRAIN_SOURCE_ID = 'terrain';
 /** Terrain displacement uses the elevation model at its actual vertical scale. */
 const TERRAIN_EXAGGERATION = 1.0;
 const PITCH_3D = 55;
+const [COVERAGE_WEST, COVERAGE_SOUTH, COVERAGE_EAST, COVERAGE_NORTH] = COVERAGE_BBOX;
 
 /**
  * One step of the alert pulse. This changes paint only: no layer is added,
@@ -77,6 +78,12 @@ export function MapView({ views, onOpenLayers }: MapViewProps) {
   const overviewContainerRef = useRef<HTMLDivElement | null>(null);
   const overviewMapRef = useRef<MapLibreMap | null>(null);
   const [ready, setReady] = useState(false);
+  // Distinguishes "the style parsed" from "there is a street grid to look at."
+  // The overlay stays up until the roads source is loaded and a road frame has
+  // actually painted, not merely until the source reports loaded.
+  const [basemapReady, setBasemapReady] = useState(false);
+  const basemapReadyRef = useRef(false);
+  const [noCoverageInView, setNoCoverageInView] = useState(false);
   const [clock, setClock] = useState(() => Date.now());
   const [mapError, setMapError] = useState<string | null>(null);
   const [legendOpen, setLegendOpen] = useState(false);
@@ -124,7 +131,9 @@ export function MapView({ views, onOpenLayers }: MapViewProps) {
         container: containerRef.current,
         style: buildStyle(),
         center: [-122.4085, 37.7835],
-        zoom: 14.1,
+        // Start at pedestrian scale: streets and building footprints are the
+        // primary navigation surface, not a neighbourhood overview.
+        zoom: 16.2,
         minZoom: 11.4,
         maxZoom: 18.5,
         maxBounds: [
@@ -139,6 +148,9 @@ export function MapView({ views, onOpenLayers }: MapViewProps) {
         touchPitch: true,
         maxPitch: 78,
         antialias: true,
+        // Retina phones at 3× render four times the pixels of a 1× canvas. A 2×
+        // backing store keeps labels sharp while cutting fill-rate on first paint.
+        pixelRatio: Math.min(window.devicePixelRatio || 1, 2),
         fadeDuration: 0,
       });
     } catch (err) {
@@ -146,7 +158,25 @@ export function MapView({ views, onOpenLayers }: MapViewProps) {
       return;
     }
     mapRef.current = map;
-    if (import.meta.env.DEV) (window as unknown as { __nightmap?: MapLibreMap }).__nightmap = map;
+    const updateCoverage = () => {
+      // The notice is for a viewport with no mapped ground in it. If any part of
+      // the footprint is visible, the amber boundary explains the blank edges.
+      const view = map.getBounds();
+      const showsCoverage =
+        view.getEast() > COVERAGE_WEST &&
+        view.getWest() < COVERAGE_EAST &&
+        view.getNorth() > COVERAGE_SOUTH &&
+        view.getSouth() < COVERAGE_NORTH;
+      setNoCoverageInView(!showsCoverage);
+    };
+    map.on('moveend', updateCoverage);
+    updateCoverage();
+    // Development hooks are also exposed to an automated browser so the
+    // Playwright suite can exercise the built production preview with the same
+    // renderer. Ordinary visitors never receive this handle.
+    if (import.meta.env.DEV || navigator.webdriver) {
+      (window as unknown as { __nightmap?: MapLibreMap }).__nightmap = map;
+    }
     map.touchZoomRotate.enableRotation();
     map.keyboard.enableRotation();
 
@@ -191,11 +221,25 @@ export function MapView({ views, onOpenLayers }: MapViewProps) {
     });
     map.on('sourcedata', (event) => {
       const detail = event as { sourceId?: string; isSourceLoaded?: boolean };
+      if (detail.sourceId === 'roads' && detail.isSourceLoaded) {
+        if (!basemapReadyRef.current) {
+          // A source-loaded event can arrive before the first frame that contains
+          // the new line geometry. Hold the opaque loading layer until MapLibre
+          // has actually painted a frame, so it cannot uncover a half-drawn grid.
+          map.triggerRepaint();
+          map.once('render', () => {
+            if (basemapReadyRef.current || mapRef.current !== map) return;
+            basemapReadyRef.current = true;
+            setBasemapReady(true);
+          });
+        }
+      }
       if (detail.sourceId === TERRAIN_SOURCE_ID && detail.isSourceLoaded) setTerrainTilesMissing(false);
       if (detail.sourceId === BUILDINGS_SOURCE_ID && detail.isSourceLoaded) setTerrainTilesMissing(false);
     });
 
     return () => {
+      map.off('moveend', updateCoverage);
       map.remove();
       mapRef.current = null;
     };
@@ -207,7 +251,7 @@ export function MapView({ views, onOpenLayers }: MapViewProps) {
   useEffect(() => {
     const main = mapRef.current;
     const container = overviewContainerRef.current;
-    if (!ready || !main || !container || overviewMapRef.current) return;
+    if (!ready || !basemapReady || !main || !container || overviewMapRef.current) return;
 
     let active = true;
     const overview = new maplibregl.Map({
@@ -264,13 +308,13 @@ export function MapView({ views, onOpenLayers }: MapViewProps) {
         id: 'main-map-extent-fill',
         type: 'fill',
         source: 'main-map-extent',
-        paint: { 'fill-color': '#B6A0E8', 'fill-opacity': 0.16 },
+        paint: { 'fill-color': '#E0A458', 'fill-opacity': 0.14 },
       });
       overview.addLayer({
         id: 'main-map-extent-line',
         type: 'line',
         source: 'main-map-extent',
-        paint: { 'line-color': '#D0BFFF', 'line-width': 2 },
+        paint: { 'line-color': '#F0C674', 'line-width': 2 },
       });
       syncExtent();
     });
@@ -285,7 +329,9 @@ export function MapView({ views, onOpenLayers }: MapViewProps) {
     const onEnter = () => { overview.getCanvas().style.cursor = 'crosshair'; };
     const onLeave = () => { overview.getCanvas().style.cursor = ''; };
 
-    main.on('move', syncExtent);
+    // The overview is a second WebGL map. Re-centring it during a pan makes the
+    // main map fight another GL context for every frame, so the extent catches
+    // up once the camera settles instead of chasing it.
     main.on('moveend', syncExtent);
     overview.on('click', onMiniMapClick);
     overview.on('mouseenter', onEnter);
@@ -293,7 +339,6 @@ export function MapView({ views, onOpenLayers }: MapViewProps) {
 
     return () => {
       active = false;
-      main.off('move', syncExtent);
       main.off('moveend', syncExtent);
       overview.off('click', onMiniMapClick);
       overview.off('mouseenter', onEnter);
@@ -301,7 +346,7 @@ export function MapView({ views, onOpenLayers }: MapViewProps) {
       overview.remove();
       overviewMapRef.current = null;
     };
-  }, [ready]);
+  }, [ready, basemapReady]);
 
   // Keep the canvas in sync with filtered data.
   useEffect(() => {
@@ -452,16 +497,25 @@ export function MapView({ views, onOpenLayers }: MapViewProps) {
     const satelliteOn = Boolean(state.layers.satellite);
     set(['satellite-raster'], satelliteOn);
     set(['road-casing', 'roads', 'paths'], state.layers.streets);
-    set(['street-labels'], state.layers['street-labels']);
+    // The label pass is deliberately held back until the road grid has painted:
+    // its glyph layout is the most expensive part of first render, and it must
+    // never keep the street network behind a loading screen.
+    set(['street-labels'], state.layers['street-labels'] && basemapReady);
     set(['green-fill', 'green-edge'], state.layers.parks && !satelliteOn);
     set(['water-fill', 'bay-shelf', 'bay-shallow', 'coast-glow', 'coastline'], !satelliteOn);
-    set(['hood-labels'], state.layers.neighbourhoods);
+    // Symbol/label passes are held until the roads are painted. Glyph shaping
+    // and collision are the most expensive part of a first frame on a slow
+    // phone; circles and lines can appear immediately without holding the grid.
+    set(['hood-labels'], state.layers.neighbourhoods && basemapReady);
     set(['rail-line'], state.layers['transit-lines']);
-    set(['stops-dots', 'stops-labels'], state.layers['transit-stops']);
-    set(['landmark-dots', 'landmark-labels'], state.layers.landmarks);
+    set(['stops-dots'], state.layers['transit-stops']);
+    set(['stops-labels'], state.layers['transit-stops'] && basemapReady);
+    set(['landmark-dots'], state.layers.landmarks);
+    set(['landmark-labels'], state.layers.landmarks && basemapReady);
     set(['hillshade'], state.layers.terrain);
     set([BUILDINGS_LAYER_ID], state.layers['buildings-3d']);
-    set(['places-symbol', 'cluster-halo', 'cluster-count'], state.layers.resources);
+    set(['cluster-halo'], state.layers.resources);
+    set(['places-symbol', 'cluster-count'], state.layers.resources && basemapReady);
     set(['saved-rings'], state.layers.saved);
     set(['obs-symbol'], state.layers.observations);
     set(['msg-halo', 'msg-dot'], state.layers['private-messages']);
@@ -478,7 +532,33 @@ export function MapView({ views, onOpenLayers }: MapViewProps) {
     if (map.getLayer('hillshade')) {
       map.setPaintProperty('hillshade', 'hillshade-exaggeration', state.layerOpacity.terrain ?? 0.32);
     }
-  }, [state.layers, state.layerOpacity, ready]);
+
+    // Street names are the most expensive part of a redraw: every frame the
+    // label engine re-runs collision against hundreds of candidates. They are
+    // static while the camera is being dragged, so skip that work and restore
+    // them as soon as the gesture ends.
+    const hideStreetLabels = () => {
+      if (state.layers['street-labels'] && map.getLayer('street-labels')) {
+        map.setLayoutProperty('street-labels', 'visibility', 'none');
+      }
+    };
+    const restoreStreetLabels = () => {
+      if (map.getLayer('street-labels')) {
+        map.setLayoutProperty(
+          'street-labels',
+          'visibility',
+          state.layers['street-labels'] ? 'visible' : 'none',
+        );
+      }
+    };
+    map.on('dragstart', hideStreetLabels);
+    map.on('dragend', restoreStreetLabels);
+
+    return () => {
+      map.off('dragstart', hideStreetLabels);
+      map.off('dragend', restoreStreetLabels);
+    };
+  }, [state.layers, state.layerOpacity, ready, basemapReady]);
 
   // Building registry points. The full registry is fetched only when the layer
   // is switched on, then kept in memory and by the service worker.
@@ -838,24 +918,6 @@ export function MapView({ views, onOpenLayers }: MapViewProps) {
       }
     };
 
-    const handleMove = (event: maplibregl.MapMouseEvent) => {
-      const hits = map.queryRenderedFeatures(event.point, {
-        layers: [
-          'places-symbol',
-          'stops-dots',
-          'landmark-dots',
-          'building-registry-dots',
-          'msg-halo',
-          'msg-dot',
-          'cluster-halo',
-          INCIDENT_LAYER.calls,
-          INCIDENT_LAYER.cases311,
-          'maintenance-requests',
-        ].filter((id) => map.getLayer(id)),
-      });
-      map.getCanvas().style.cursor = hits.length > 0 ? 'pointer' : '';
-    };
-
     const handlePick = (event: maplibregl.MapMouseEvent) => {
       if (!state.route.picking) return;
       actions.setPicking(null);
@@ -873,11 +935,9 @@ export function MapView({ views, onOpenLayers }: MapViewProps) {
     };
 
     map.on('click', handleClick);
-    map.on('mousemove', handleMove);
     map.on('click', handlePick);
     return () => {
       map.off('click', handleClick);
-      map.off('mousemove', handleMove);
       map.off('click', handlePick);
     };
   }, [ready, state.route.picking, actions, clock]);
@@ -1018,14 +1078,45 @@ export function MapView({ views, onOpenLayers }: MapViewProps) {
     setStreetLevelOpen(true);
   };
 
+  const returnToCoverage = () => {
+    const map = mapRef.current;
+    if (!map) return;
+    // A previous fly-to can leave camera padding taller than the phone's map
+    // area, which makes fitBounds compute no camera at all. Start clean.
+    map.setPadding({ top: 0, bottom: 0, left: 0, right: 0 });
+    map.fitBounds(COVERAGE_BBOX, {
+      padding: 24,
+      maxZoom: 14.8,
+      duration: 700,
+    });
+  };
+
   return (
-    <div className="map-stage">
+    <div
+      className={`map-stage ${basemapReady ? 'has-minimap' : ''} ${noCoverageInView ? 'has-coverage-notice' : ''}`}
+      aria-busy={!basemapReady}
+    >
       <div ref={containerRef} className="map-canvas" role="application" aria-label="Night Map of central San Francisco" />
 
-      <section className="mini-map-widget" aria-label="Map overview">
-        <div className="mini-map-heading"><span>Overview</span><span>Current extent</span></div>
-        <div ref={overviewContainerRef} className="mini-map-canvas" aria-label="Clickable overview map" />
-      </section>
+      {!basemapReady && !mapError && (
+        <div className="map-loading" role="status" aria-live="polite">
+          <div className="map-loading-card">
+            <p className="map-loading-eyebrow">Night Map · San Francisco</p>
+            <h2>Charting the streets</h2>
+            <p>The basemap and street network are still loading. The map will appear when the road grid is ready.</p>
+            <span className="map-loading-bar" aria-hidden="true">
+              <span />
+            </span>
+          </div>
+        </div>
+      )}
+
+      {basemapReady && (
+        <section className="mini-map-widget" aria-label="Map overview">
+          <div className="mini-map-heading"><span>Overview</span><span>Current extent</span></div>
+          <div ref={overviewContainerRef} className="mini-map-canvas" aria-label="Clickable overview map" />
+        </section>
+      )}
 
       {streetLevelOpen && (
         <StreetLevelViewer
@@ -1100,6 +1191,32 @@ export function MapView({ views, onOpenLayers }: MapViewProps) {
           </span>
         )}
       </div>
+
+      {noCoverageInView && (
+        <div className="coverage-notice" role="status" data-testid="coverage-notice">
+          <span className="coverage-notice-mark" aria-hidden="true">
+            <svg viewBox="0 0 24 24">
+              <path d="M4 7.5 9 4l6 3.5L20 4v12.5L15 20l-6-3.5L4 20V7.5Z" />
+              <path d="M9 4v12.5M15 7.5V20" />
+            </svg>
+          </span>
+          <span className="coverage-notice-copy">
+            <strong>Outside Night Map coverage</strong>
+            <span>
+              Central San Francisco only. Beyond the amber dashed boundary is intentionally unmapped.
+            </span>
+          </span>
+          <button
+            type="button"
+            className="button small"
+            aria-label="Return to coverage"
+            onClick={returnToCoverage}
+          >
+            <span className="coverage-return-full">Return to coverage</span>
+            <span className="coverage-return-compact">Return</span>
+          </button>
+        </div>
+      )}
 
       <div className="map-controls" aria-label="Map controls">
         <button
@@ -1283,7 +1400,8 @@ export function MapView({ views, onOpenLayers }: MapViewProps) {
           )}
           <p className="legend-foot">
             Counts are places installed in this release, not everything that exists. Colour is never the only cue:
-            every marker also has a symbol, and every category is named.
+            every marker also has a symbol, and every category is named. The amber dashed line marks the edge of the
+            bundled central-SF extract; beyond it the basemap is intentionally blank.
           </p>
         </div>
       )}

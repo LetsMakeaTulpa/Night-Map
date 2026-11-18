@@ -35,10 +35,9 @@ test.describe('mobile field use', () => {
     await page.locator('.sheet-handle').press('Enter');
     await expect(page.locator('.sheet')).toHaveClass(/sheet-collapsed/);
 
-    // One-hand convenience: the floating capture button opens a prefilled composer.
-    await page.getByRole('button', { name: 'Quick field note' }).click();
-    await expect(page.getByRole('heading', { name: 'Pinned observation at map centre' })).toBeVisible();
-    await page.getByRole('button', { name: 'Cancel' }).click();
+    // Notes are reached from the header rather than a floating capture button.
+    await page.getByRole('button', { name: 'Field map and notes' }).click();
+    await expect(page.getByRole('heading', { name: 'Your observations' })).toBeVisible();
 
     // Search opens over the map and can be dismissed without losing the map.
     await page.getByRole('button', { name: 'Search', exact: true }).click();
@@ -47,16 +46,21 @@ test.describe('mobile field use', () => {
     await expect(page.locator('.map-canvas')).toBeVisible();
 
     // Touch targets for the core map controls carry accessible names.
-    for (const name of ['Use current location', 'Layers', 'Map legend', 'Zoom in', 'Zoom out']) {
+    for (const name of [
+      '3D view', 'Toggle satellite imagery', 'Street-level imagery',
+      'Realign to my GPS location', 'Layers', 'Map legend', 'Zoom in', 'Zoom out',
+    ]) {
       await expect(page.getByRole('button', { name, exact: true }).first()).toBeVisible();
     }
 
-    // Map, Notes and Review are gone from the phone bar, and the feed tabs sit at the end.
+    // Map, Library and Review are not on the phone bar; notes use the header entry.
     const nav = page.getByRole('navigation', { name: 'Workspaces' });
     await expect(nav.getByRole('button', { name: 'Map', exact: true })).toHaveCount(0);
-    await expect(nav.getByRole('button', { name: 'Notes', exact: true })).toHaveCount(0);
+    await expect(nav.getByRole('button', { name: 'Library', exact: true })).toHaveCount(0);
     await expect(nav.getByRole('button', { name: 'Review', exact: true })).toHaveCount(0);
-    expect(await nav.locator('button').allInnerTexts()).toEqual(['Nearby', 'Routes', 'Atlas', 'CCTV', 'Radio']);
+    expect(await nav.locator('button').allInnerTexts()).toEqual([
+      'Nearby', 'Messages', 'Field map', 'Routes', 'Buildings', 'Atlas', 'CCTV', 'Radio',
+    ]);
 
     // They are status panels, not players: each states what does not exist.
     await nav.getByRole('button', { name: 'CCTV' }).click();
@@ -70,7 +74,8 @@ test.describe('mobile field use', () => {
     await expect(page.getByRole('heading', { name: 'Review queue' })).toBeVisible();
 
     // Notes are still reachable: they moved to the header rather than disappearing.
-    await page.getByRole('button', { name: 'My notes' }).click();
+    await page.getByRole('button', { name: 'Field map and notes' }).click();
+    await expect(page.getByRole('heading', { name: 'Your observations' })).toBeVisible();
     await expect(page.getByText('No public audio')).toHaveCount(0);
   });
 });

@@ -1,6 +1,6 @@
 import type { AppDataset, CategoryId } from '../domain/types';
 import { CATEGORY_BY_ID } from '../domain/categories';
-import roads from '../data/basemap/roads.json';
+import streets from '../data/basemap/streets.json';
 
 export type HitKind = 'place' | 'stop' | 'street' | 'neighbourhood';
 
@@ -69,25 +69,16 @@ function buildIndex(dataset: AppDataset): IndexEntry[] {
     });
   }
 
-  const seenStreets = new Map<string, { coordinates: [number, number]; count: number }>();
-  for (const feature of (roads as GeoJSON.FeatureCollection).features) {
-    const name = feature.properties?.name as string | undefined;
-    if (!name) continue;
-    const coords = (feature.geometry as GeoJSON.LineString).coordinates;
-    if (!coords?.length) continue;
-    const mid = coords[Math.floor(coords.length / 2)] as [number, number];
-    const existing = seenStreets.get(name);
-    if (existing) existing.count += 1;
-    else seenStreets.set(name, { coordinates: mid, count: 1 });
-  }
-  for (const [name, info] of seenStreets) {
+  // Streets come from a tiny precomputed index. Importing the full road
+  // geometry here would put another 2 MB in the initial bundle just for search.
+  for (const street of streets as { name: string; coordinates: [number, number] }[]) {
     entries.push({
-      id: `street:${name}`,
+      id: `street:${street.name}`,
       kind: 'street',
-      title: name,
+      title: street.name,
       subtitle: 'Street in the map footprint',
-      coordinates: info.coordinates,
-      haystack: normalize(`${name} street road`),
+      coordinates: street.coordinates,
+      haystack: normalize(`${street.name} street road`),
     });
   }
 

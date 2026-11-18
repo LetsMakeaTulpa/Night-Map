@@ -1,25 +1,5 @@
 import { expect, test, type Page } from '@playwright/test';
-
-const isMobileProject = (projectName: string) => projectName === 'mobile';
-
-async function openSearch(page: Page, projectName: string) {
-  if (isMobileProject(projectName)) {
-    await page.getByRole('button', { name: 'Search', exact: true }).click();
-  }
-  const input = page.getByLabel('Search Night Map');
-  await input.fill('');
-  await input.waitFor({ state: 'visible' });
-  return input;
-}
-
-async function searchAndOpen(page: Page, projectName: string, query: string, name: RegExp) {
-  const input = await openSearch(page, projectName);
-  await input.fill(query);
-  const hit = page.locator('.search-hit').filter({ hasText: name }).first();
-  await hit.waitFor({ state: 'visible' });
-  await hit.click();
-  await expect(page.locator('.inspector')).toBeVisible();
-}
+import { isMobileProject, openFieldnotes, searchAndOpen } from './helpers';
 
 async function openNearby(page: Page, projectName: string) {
   if (isMobileProject(projectName)) {
@@ -33,8 +13,13 @@ async function openNearby(page: Page, projectName: string) {
 test.describe('Scenario A — find a real, source-backed resource', () => {
   test('search, filter, select and inspect a record without an account', async ({ page }, testInfo) => {
     await page.goto('/');
-    await expect(page.locator('.brand-name').first()).toBeVisible();
-    await expect(page.getByText('No account', { exact: false }).first()).toBeVisible();
+    if (isMobileProject(testInfo.project.name)) {
+      await expect(page.locator('.brand-name').first()).toBeVisible();
+      await expect(page.getByText('No account', { exact: false }).first()).toBeVisible();
+    } else {
+      await expect(page.getByRole('complementary', { name: 'Workspaces' })).toBeVisible();
+      await expect(page.getByRole('img', { name: /Online: network requests work/ })).toBeVisible();
+    }
 
     // Category filtering is real: turning water off changes the result set.
     await openNearby(page, testInfo.project.name);
@@ -44,7 +29,7 @@ test.describe('Scenario A — find a real, source-backed resource', () => {
     await waterChip.click();
     await expect(waterChip).toHaveAttribute('aria-pressed', 'true');
 
-    await searchAndOpen(page, testInfo.project.name, 'GLIDE', /GLIDE Daily Free Meals/);
+    await searchAndOpen(page, 'GLIDE', /GLIDE Daily Free Meals/);
     const inspector = page.locator('.inspector');
     await expect(inspector.getByRole('heading', { name: /GLIDE Daily Free Meals/ })).toBeVisible();
     await expect(inspector.getByText('330 Ellis Street')).toBeVisible();
@@ -66,12 +51,7 @@ test.describe('Scenario B — evaluate uncertainty', () => {
   }, testInfo) => {
     await page.goto('/');
     await openNearby(page, testInfo.project.name);
-    await searchAndOpen(
-      page,
-      testInfo.project.name,
-      'Boeddeker fountain',
-      /Boeddeker Park - Drinking Fountain/,
-    );
+    await searchAndOpen(page, 'Boeddeker fountain', /Boeddeker Park - Drinking Fountain/);
     const inspector = page.locator('.inspector');
     await expect(inspector.getByText('Open now not confirmed').first()).toBeVisible();
     await expect(inspector.getByText('Open now, per published hours')).toHaveCount(0);
@@ -84,7 +64,7 @@ test.describe('Scenario B — evaluate uncertainty', () => {
 test.describe('Scenario C — plan a route, and recover when routing fails', () => {
   test('plans a real walking route, then shows an honest failure state', async ({ page }, testInfo) => {
     await page.goto('/');
-    await searchAndOpen(page, testInfo.project.name, 'GLIDE', /GLIDE Daily Free Meals/);
+    await searchAndOpen(page, 'GLIDE', /GLIDE Daily Free Meals/);
     const inspector = page.locator('.inspector');
     await inspector.getByRole('button', { name: 'GO' }).click();
 
@@ -114,14 +94,14 @@ test.describe('Scenario C — plan a route, and recover when routing fails', () 
 test.describe('Scenario D — save and revisit', () => {
   test('a saved place survives a reload', async ({ page }, testInfo) => {
     await page.goto('/');
-    await searchAndOpen(page, testInfo.project.name, 'Curry Senior', /Curry Senior Center/);
+    await searchAndOpen(page, 'Curry Senior', /Curry Senior Center/);
     const inspector = page.locator('.inspector');
     const save = inspector.getByRole('button', { name: 'Save', exact: true });
     await save.click();
     await expect(inspector.getByRole('button', { name: 'Saved', exact: true })).toBeVisible();
 
     await page.reload();
-    await searchAndOpen(page, testInfo.project.name, 'Curry Senior', /Curry Senior Center/);
+    await searchAndOpen(page, 'Curry Senior', /Curry Senior Center/);
     await expect(page.locator('.inspector').getByRole('button', { name: 'Saved', exact: true })).toBeVisible();
   });
 });
@@ -135,7 +115,7 @@ test.describe('Scenario E — record and edit a private fieldnote', () => {
     });
 
     await page.goto('/');
-    await searchAndOpen(page, testInfo.project.name, 'GLIDE', /GLIDE Daily Free Meals/);
+    await searchAndOpen(page, 'GLIDE', /GLIDE Daily Free Meals/);
     const inspector = page.locator('.inspector');
     await inspector.getByRole('button', { name: 'Add private note' }).click();
 
@@ -150,12 +130,7 @@ test.describe('Scenario E — record and edit a private fieldnote', () => {
     await expect(inspector.getByText(noteText).first()).toBeVisible();
     await expect(inspector.getByText('Private').first()).toBeVisible();
 
-    if (isMobileProject(testInfo.project.name)) {
-      // Notes left the phone bar by request; the header button keeps them reachable.
-      await page.getByRole('button', { name: 'My notes' }).click();
-    } else {
-      await page.getByRole('button', { name: 'Notes', exact: true }).first().click();
-    }
+    await openFieldnotes(page, testInfo.project.name);
     await expect(page.getByText(noteText).first()).toBeVisible();
     await page.getByRole('button', { name: 'Edit', exact: true }).first().click();
     const textarea = page.getByLabel(/What did you see/);
@@ -164,11 +139,7 @@ test.describe('Scenario E — record and edit a private fieldnote', () => {
     await expect(page.getByText(/Rechecked later/).first()).toBeVisible();
 
     await page.reload();
-    if (isMobileProject(testInfo.project.name)) {
-      await page.getByRole('button', { name: 'My notes' }).click();
-    } else {
-      await page.getByRole('button', { name: 'Notes', exact: true }).first().click();
-    }
+    await openFieldnotes(page, testInfo.project.name);
     await expect(page.getByText(/Rechecked later/).first()).toBeVisible();
 
     // Nothing was POSTed anywhere: the note stayed on the device.
@@ -177,35 +148,28 @@ test.describe('Scenario E — record and edit a private fieldnote', () => {
 });
 
 test.describe('Scenario G — desktop research workspace', () => {
-  test('selection survives filtering and resizing the panes', async ({ page }) => {
+  test('selection survives workspace changes and the command palette', async ({ page }) => {
     test.skip(test.info().project.name !== 'desktop', 'desktop-only workflow');
     await page.goto('/');
-    await searchAndOpen(page, 'desktop', 'Curry Senior', /Curry Senior Center/);
+    await searchAndOpen(page, 'Curry Senior', /Curry Senior Center/);
     const inspector = page.locator('.inspector');
     await expect(inspector.getByRole('heading', { name: /Curry Senior Center/ })).toBeVisible();
+    await expect(page.locator('.float-panel.panel-right')).toBeVisible();
     await inspector.getByRole('tab', { name: /Sources/ }).click();
     await expect(inspector.getByText(/Provider website/)).toBeVisible();
 
-    const pane = page.locator('.pane-right');
-    const before = await pane.boundingBox();
-    expect(before).not.toBeNull();
-    const splitter = page.locator('.splitter').last();
-    const box = await splitter.boundingBox();
-    expect(box).not.toBeNull();
-    if (box && before) {
-      await page.mouse.move(box.x + 3, box.y + 200);
-      await page.mouse.down();
-      await page.mouse.move(box.x - 120, box.y + 200, { steps: 10 });
-      await page.mouse.up();
-      const after = await pane.boundingBox();
-      expect(after!.width).toBeGreaterThan(before.width + 40);
-    }
+    // Opening a research workspace must not discard the selected record.
+    await page.getByRole('button', { name: 'Nearby', exact: true }).click();
+    await expect(page.locator('.float-panel.panel-left')).toBeVisible();
+    await expect(inspector.getByRole('heading', { name: /Curry Senior Center/ })).toBeVisible();
+    await page.getByRole('button', { name: 'Close workspace' }).click();
     await expect(inspector.getByRole('heading', { name: /Curry Senior Center/ })).toBeVisible();
 
     // The command palette is additive, not the only way to work.
     await page.keyboard.press('Control+k');
     await expect(page.getByRole('dialog', { name: 'Command palette' })).toBeVisible();
     await page.keyboard.press('Escape');
+    await expect(inspector.getByRole('heading', { name: /Curry Senior Center/ })).toBeVisible();
   });
 });
 
@@ -214,7 +178,7 @@ test.describe('Scenario H — protect sensitive information', () => {
     page,
   }, testInfo) => {
     await page.goto('/');
-    await searchAndOpen(page, testInfo.project.name, 'Hospitality House', /Tenderloin Self-Help Center/);
+    await searchAndOpen(page, 'Hospitality House', /Tenderloin Self-Help Center/);
     const inspector = page.locator('.inspector');
     const secret = `Private access detail ${Date.now()}`;
     await inspector.getByRole('button', { name: 'Add private note' }).click();

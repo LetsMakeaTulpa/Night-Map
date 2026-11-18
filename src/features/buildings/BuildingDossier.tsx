@@ -15,6 +15,7 @@ import {
 import { formatDate } from '../../domain/status';
 import { useStore } from '../../state/store';
 import { EmptyState, MetaRow } from '../ui';
+import { BuildingPhoto } from './BuildingPhoto';
 import type { BuildingDossier as Dossier } from '../../domain/types';
 import type { ComposeTarget } from '../fieldnotes/FieldnoteComposer';
 
@@ -105,25 +106,28 @@ export function BuildingDossier({
         ← All buildings
       </button>
 
-      <header className="dossier-head">
-        <p className="eyebrow">
-          Building dossier · {dossier.neighborhood ?? 'neighbourhood not published'}
-        </p>
-        <h2 className="display">{dossier.address}</h2>
-        <div className="dossier-badges">
-          <span className={`building-status status-${dossier.status}`}>{status.label}</span>
-          <span className={`confidence confidence-${dossier.confidence}`}>
-            {dossier.confidence} confidence — {CONFIDENCE_LABELS[dossier.confidence]}
-          </span>
-          {checkSummary.latest && (
-            <span className="confidence">
-              Your last field verification {observationStamp(checkSummary.latest.observedAt)} —{' '}
-              {buildingConditionLabel(checkSummary.latest.buildingCondition)}
+      <div className="dossier-intro">
+        <header className="dossier-head">
+          <p className="eyebrow">
+            Building dossier · {dossier.neighborhood ?? 'neighbourhood not published'}
+          </p>
+          <h2 className="display">{dossier.address}</h2>
+          <div className="dossier-badges">
+            <span className={`building-status status-${dossier.status}`}>{status.label}</span>
+            <span className={`confidence confidence-${dossier.confidence}`}>
+              {dossier.confidence} confidence — {CONFIDENCE_LABELS[dossier.confidence]}
             </span>
-          )}
-        </div>
-        <p className="muted small">{status.note}</p>
-      </header>
+            {checkSummary.latest && (
+              <span className="confidence">
+                Your last field verification {observationStamp(checkSummary.latest.observedAt)} —{' '}
+                {buildingConditionLabel(checkSummary.latest.buildingCondition)}
+              </span>
+            )}
+          </div>
+          <p className="muted small">{status.note}</p>
+        </header>
+        <BuildingPhoto address={dossier.address} coordinates={dossier.coordinates} />
+      </div>
 
       <p className="notice small">
         A classification of City records attached to this parcel, not a field check. A building with a vacancy

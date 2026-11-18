@@ -175,16 +175,43 @@ for (const el of roads.elements) {
   if (el.tags?.highway === 'service' && !el.tags?.name) continue;
   const coords = simplify(wayCoords(el), 0.00002);
   if (coords.length < 2) continue;
+  const roadClass = classifyRoad(el.tags || {});
+  // Sidewalk and footway fragments outnumber real streets almost 3:1. They
+  // carry no name and are not navigable addresses; keeping them makes the
+  // basemap payload and every drag pay for geometry nobody can search for.
+  if (roadClass === 'path' && !el.tags?.name) continue;
   roadFeatures.push({
     type: 'Feature',
     properties: {
-      class: classifyRoad(el.tags || {}),
+      class: roadClass,
       name: el.tags?.name || null,
     },
     geometry: { type: 'LineString', coordinates: coords },
   });
 }
 console.log(`roads: ${roadFeatures.length} features`);
+
+// Publish the road asset before fetching the remaining layers. The street grid
+// is the map's critical path; a slow or unavailable park/water endpoint must
+// not leave a half-updated basemap without roads.
+await writeFile(
+  path.join(OUT, 'roads.json'),
+  JSON.stringify({ type: 'FeatureCollection', features: roadFeatures }),
+);
+console.log(`wrote roads.json — ${roadFeatures.length} features`);
+
+const streetIndex = new Map();
+for (const feature of roadFeatures) {
+  const name = feature.properties?.name;
+  const coords = feature.geometry?.coordinates;
+  if (!name || !coords?.length || streetIndex.has(name)) continue;
+  streetIndex.set(name, coords[Math.floor(coords.length / 2)]);
+}
+await writeFile(
+  path.join(OUT, 'streets.json'),
+  JSON.stringify([...streetIndex].map(([name, coordinates]) => ({ name, coordinates }))),
+);
+console.log(`wrote streets.json — ${streetIndex.size} indexed street names`);
 
 const green = await fetchCached('green', QUERIES.green);
 for (const el of green.elements) {
@@ -278,7 +305,6 @@ const write = async (name, features) => {
   console.log(`wrote ${name}.json — ${(size / 1024).toFixed(0)} KB`);
 };
 
-await write('roads', roadFeatures);
 await write('green', greenFeatures);
 await write('water', waterFeatures);
 await write('coastline', coastFeatures);

@@ -2,7 +2,7 @@
 
 Status of the central-San Francisco vertical slice, grouped by outcome. **Done**
 means implemented and verified in this working tree; it does not mean the current
-build has been deployed. Last reviewed **2026-11-15**.
+build has been deployed. Last reviewed **2026-11-17**.
 
 Sources: the project requirements, the working tree, and
 [the README](README.md#known-limitations).
@@ -17,8 +17,9 @@ Sources: the project requirements, the working tree, and
   searchable in the table and are deliberately not plotted. Classifications
   describe records, never occupancy.
 - [x] **Nocturnal basemap, terrain and 3D.** Dark vector basemap with a very dark
-  blue ocean, 35 elevation tiles, and 13,975 extruded footprints. The ×1.4
-  vertical exaggeration and estimated-height split are stated in the UI.
+  blue ocean, 35 elevation tiles, and 13,975 extruded footprints. Terrain is drawn
+  at true vertical scale (×1, no exaggeration), and the estimated-height split is
+  stated in the UI.
 - [x] **Desktop and mobile shells.** Full-bleed map, left side rail, floating
   workspace and inspector cards, edge-attached flyouts, bottom menu bar, and a
   draggable mobile bottom sheet. The desktop breakpoint is 960 px.
@@ -37,8 +38,18 @@ Sources: the project requirements, the working tree, and
 - [x] **311 snapshot.** Nightly City data, plotted only on request and labelled
   with its computed age rather than presented as live.
 - [x] **Privacy-first local state.** No accounts, analytics or tracking pixels.
-  Field notes, saved places, reports, review decisions and corrections stay in
-  IndexedDB; photos are re-encoded to strip metadata.
+  Field notes, private messages, saved places, reports, review decisions and
+  corrections stay in IndexedDB; photos are re-encoded to strip metadata.
+- [x] **Private, location-locked messages.** Compose only in Messages, never from
+  the map. A fresh fix (≤15 s old, ±30 m accuracy) is required to write; reading,
+  editing and deleting require the same fresh fix within 30 m of the anchor. Map
+  markers expose only locked/nearby state, open message text relocks when the fix
+  expires, and there is no field-note edit path. Messages are self-addressed notes
+  on this device; there is no server delivery, sharing or moderation.
+- [x] **Live GPS lock.** Turning on GPS lock starts a device watch and follows
+  each fresh fix until the map is dragged or the lock is stopped. The first follow
+  moves to street zoom; later fixes preserve zoom. The crosshair remains a
+  one-time realign action, and stale cached fixes cannot unlock messages.
 - [x] **Correction and review workflow.** Local reports are structure-checked,
   deduplicated, given a status, resolved in the Review queue, and logged.
 - [x] **Library.** Private collections of places, routes and notes, with a
@@ -54,8 +65,10 @@ Sources: the project requirements, the working tree, and
 - [x] **Responsive corrections.** The 992 px viewport now gets the desktop shell,
   the minimap fills its frame and shows the whole city, and the mobile sheet has
   contained scrolling instead of covering the map.
-- [x] **Verification.** Typecheck, 123 unit tests across 16 files, and the
-  production build pass in the working tree.
+- [x] **Verification.** Typecheck, 165 unit tests across 26 files, and the
+  production build pass in the working tree. The Playwright suite contains 21
+  acceptance scenarios across 6 specs (desktop, mobile, 3D, incidents, offline and
+  verification).
 
 ## Partial
 
@@ -113,10 +126,11 @@ These are deliberate exclusions, not backlog items.
   published schedules and service descriptions are the limit.
 - **Safety, crime or lighting route scores.** The app never labels a street or
   route as “safe” and does not score routes by crime or lighting.
-- **Messaging or geocaches.** There is no server, so a note for another person
-  could not be delivered, verified or moderated.
-- **Publishing or sharing field notes.** Notes are private by default and there is
-  no publish action.
+- **Server-side messaging or geocaches.** There is no server, so a note for
+  another person could not be delivered, verified or moderated. Private messages
+  are self-addressed, location-locked notes on this device, not a messaging service.
+- **Publishing or sharing notes and messages.** Both are private by default and
+  there is no publish action.
 - **Recology e-waste and LifeLine enrolment as map markers.** The e-waste site is
   outside this release's footprint, and no verifiable walk-in LifeLine address is
   published; the app says so instead of guessing.

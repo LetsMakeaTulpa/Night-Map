@@ -1,5 +1,4 @@
 import type { StyleSpecification } from 'maplibre-gl';
-import roads from '../data/basemap/roads.json';
 import green from '../data/basemap/green.json';
 import water from '../data/basemap/water.json';
 import coastline from '../data/basemap/coastline.json';
@@ -7,10 +6,14 @@ import rail from '../data/basemap/rail.json';
 import basePoints from '../data/basemap/base-points.json';
 import landmarks from '../data/basemap/landmarks.json';
 import terrainMeta from '../data/terrain-meta.json';
+import meta from '../data/meta.json';
 import { PUBLIC_REALM_MAINTENANCE_KINDS } from '../domain/public-realm-maintenance';
 
 /** The elevation extract's own bounds, so a request is never made for a tile we do not ship. */
 const TERRAIN_BBOX = terrainMeta.bbox as [number, number, number, number];
+
+/** The installed places' footprint. Beyond this boundary the basemap is intentionally absent. */
+export const COVERAGE_BBOX = meta.footprint.bbox as [number, number, number, number];
 
 export const THEME = {
   land: '#0D1317',
@@ -44,13 +47,50 @@ const empty = { type: 'FeatureCollection' as const, features: [] };
 
 const FONT = ['Noto Sans Regular'];
 
+const [COVERAGE_WEST, COVERAGE_SOUTH, COVERAGE_EAST, COVERAGE_NORTH] = COVERAGE_BBOX;
+const coverage = {
+  type: 'FeatureCollection' as const,
+  features: [
+    {
+      type: 'Feature' as const,
+      properties: { name: meta.footprint.name },
+      geometry: {
+        type: 'Polygon' as const,
+        coordinates: [[
+          [COVERAGE_WEST, COVERAGE_SOUTH],
+          [COVERAGE_EAST, COVERAGE_SOUTH],
+          [COVERAGE_EAST, COVERAGE_NORTH],
+          [COVERAGE_WEST, COVERAGE_NORTH],
+          [COVERAGE_WEST, COVERAGE_SOUTH],
+        ]],
+      },
+    },
+  ],
+};
+
+// MapLibre hands vector tile templates to the worker as Request objects, so this
+// has to be absolute even though the page and style are same-origin.
+const ROAD_TILES =
+  typeof window === 'undefined'
+    ? '/basemap/roads/{z}/{x}/{y}.pbf'
+    : `${window.location.origin}/basemap/roads/{z}/{x}/{y}.pbf`;
+
 export function buildStyle(): StyleSpecification {
   const style: StyleSpecification = {
     version: 8,
     name: 'Night Map — nocturne',
     glyphs: '/fonts/{fontstack}/{range}.pbf',
     sources: {
-      roads: { type: 'geojson', data: roads as GeoJSON.FeatureCollection },
+      // The extract is pre-tiled at build time (scripts/build-road-tiles.mjs).
+      // Shipping done tiles keeps the 671 KB GeoJSON parse and tile index out of
+      // the first render, which is what held the street grid back on slow phones.
+      roads: {
+        type: 'vector',
+        tiles: [ROAD_TILES],
+        minzoom: 13,
+        maxzoom: 15,
+      },
+      coverage: { type: 'geojson', data: coverage as GeoJSON.FeatureCollection },
       green: { type: 'geojson', data: green as GeoJSON.FeatureCollection },
       water: { type: 'geojson', data: water as GeoJSON.FeatureCollection },
       coastline: { type: 'geojson', data: coastline as GeoJSON.FeatureCollection },
@@ -122,6 +162,7 @@ export function buildStyle(): StyleSpecification {
         id: 'hillshade',
         type: 'hillshade',
         source: 'terrainShade',
+        layout: { visibility: 'none' },
         paint: {
           'hillshade-exaggeration': 0.32,
           'hillshade-shadow-color': '#04080A',
@@ -207,6 +248,7 @@ export function buildStyle(): StyleSpecification {
         id: 'road-casing',
         type: 'line',
         source: 'roads',
+        'source-layer': 'roads',
         layout: { 'line-cap': 'round', 'line-join': 'round' },
         paint: {
           'line-color': THEME.casing,
@@ -225,6 +267,7 @@ export function buildStyle(): StyleSpecification {
         id: 'roads',
         type: 'line',
         source: 'roads',
+        'source-layer': 'roads',
         filter: ['!=', ['get', 'class'], 'path'],
         layout: { 'line-cap': 'round', 'line-join': 'round' },
         paint: {
@@ -256,12 +299,39 @@ export function buildStyle(): StyleSpecification {
         id: 'paths',
         type: 'line',
         source: 'roads',
+        'source-layer': 'roads',
         filter: ['==', ['get', 'class'], 'path'],
         layout: { 'line-cap': 'butt', 'line-join': 'round' },
         paint: {
           'line-color': THEME.path,
           'line-width': ['interpolate', ['linear'], ['zoom'], 13, 0.5, 17, 1.8],
           'line-dasharray': [2, 2],
+        },
+      },
+      {
+        // The installed extract ends here. The glow and dashed line make the
+        // boundary legible over both the dark basemap and satellite imagery.
+        id: 'coverage-edge-glow',
+        type: 'line',
+        source: 'coverage',
+        layout: { 'line-cap': 'round', 'line-join': 'round' },
+        paint: {
+          'line-color': THEME.accent,
+          'line-width': ['interpolate', ['linear'], ['zoom'], 11, 11, 16, 18],
+          'line-blur': 6,
+          'line-opacity': 0.22,
+        },
+      },
+      {
+        id: 'coverage-edge',
+        type: 'line',
+        source: 'coverage',
+        layout: { 'line-cap': 'round', 'line-join': 'round' },
+        paint: {
+          'line-color': '#F0C674',
+          'line-width': ['interpolate', ['linear'], ['zoom'], 11, 1.5, 16, 2.5],
+          'line-dasharray': [5, 3],
+          'line-opacity': 0.9,
         },
       },
       {
@@ -296,9 +366,11 @@ export function buildStyle(): StyleSpecification {
         id: 'street-labels',
         type: 'symbol',
         source: 'roads',
+        'source-layer': 'roads',
         minzoom: 13.4,
         filter: ['all', ['has', 'name'], ['!=', ['get', 'name'], '']],
         layout: {
+          visibility: 'none',
           'symbol-placement': 'line',
           'text-field': ['get', 'name'],
           'text-font': FONT,
@@ -330,6 +402,7 @@ export function buildStyle(): StyleSpecification {
         filter: ['==', ['get', 'kind'], 'neighbourhood'],
         minzoom: 11.6,
         layout: {
+          visibility: 'none',
           'text-field': ['get', 'name'],
           'text-font': FONT,
           'text-size': ['interpolate', ['linear'], ['zoom'], 11.6, 10.5, 16, 13],
@@ -362,6 +435,7 @@ export function buildStyle(): StyleSpecification {
         source: 'landmarks',
         minzoom: 14.6,
         layout: {
+          visibility: 'none',
           'text-field': ['get', 'name'],
           'text-font': FONT,
           'text-size': 11,
@@ -391,8 +465,11 @@ export function buildStyle(): StyleSpecification {
         id: 'stops-labels',
         type: 'symbol',
         source: 'stops',
-        minzoom: 16.2,
+        // Street-level stop names are useful once the user zooms in, but drawing
+        // hundreds of collision-tested labels while panning is needlessly costly.
+        minzoom: 16.8,
         layout: {
+          visibility: 'none',
           'text-field': ['get', 'name'],
           'text-font': FONT,
           'text-size': 10,
@@ -604,6 +681,7 @@ export function buildStyle(): StyleSpecification {
         source: 'places',
         filter: ['has', 'point_count'],
         layout: {
+          visibility: 'none',
           'text-field': ['get', 'point_count_abbreviated'],
           'text-font': FONT,
           'text-size': 12,
@@ -629,6 +707,7 @@ export function buildStyle(): StyleSpecification {
         source: 'places',
         filter: ['!', ['has', 'point_count']],
         layout: {
+          visibility: 'none',
           'icon-image': ['concat', 'marker-', ['get', 'category']],
           'icon-size': ['interpolate', ['linear'], ['zoom'], 13, 0.62, 16, 0.78, 18, 0.94],
           'icon-allow-overlap': true,

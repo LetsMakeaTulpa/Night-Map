@@ -1,4 +1,5 @@
 import { expect, test, type Page } from '@playwright/test';
+import { openMap } from './helpers';
 
 interface FeedPayload {
   features: { properties: { kind: string }; geometry: { coordinates: [number, number] } }[];
@@ -8,16 +9,6 @@ interface TappedFeature {
   kind: string;
   lat: number;
   lon: number;
-}
-
-async function openMap(page: Page) {
-  await page.goto('/');
-  await expect(page.locator('.map-canvas')).toBeVisible();
-  await page.waitForFunction(
-    () => Boolean((window as unknown as { __nightmap?: unknown }).__nightmap),
-    undefined,
-    { timeout: 30_000 },
-  );
 }
 
 async function toggleLayer(page: Page, name: RegExp) {
@@ -115,7 +106,7 @@ test.describe('Scenario K — reported activity, honestly labelled', () => {
 
     await page.getByRole('button', { name: 'Map legend' }).click();
     const legend = page.getByRole('dialog', { name: 'Map legend' });
-    await expect(legend.getByText(/These are published City records, not a live feed/)).toBeVisible();
+    await expect(legend.getByText(/These are published City reports, not a live feed/)).toBeVisible();
     await expect(legend.getByText(/already closed/)).toBeVisible();
     await expect(legend.getByText(/Around 40 m of position is all that is kept/)).toBeVisible();
     await page.getByRole('button', { name: 'Map legend' }).click();
@@ -168,9 +159,9 @@ test.describe('Scenario K — reported activity, honestly labelled', () => {
     await page.getByRole('button', { name: 'Layers', exact: true }).first().click();
 
     const callsRow = page.locator('.layer-item').filter({ hasText: /Dispatched calls/ }).first();
-    await expect(callsRow).toContainText(/A snapshot, not a live feed/);
+    await expect(callsRow).toContainText(/withholds sensitive calls/);
     await expect(callsRow).toContainText(/no audio/);
-    await expect(callsRow).toContainText(/withheld sensitive calls are absent/);
+    await expect(callsRow).toContainText(/open calls are absent/);
     await expect(callsRow).toContainText('offline after first use');
 
     const casesRow = page.locator('.layer-item').filter({ hasText: /311 service requests/ }).first();

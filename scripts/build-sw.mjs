@@ -47,5 +47,5 @@ const output = template
 await writeFile(path.join(DIST, 'sw.js'), output);
 console.log(
   `wrote dist/sw.js with ${precache.length} precached entries ` +
-    `(${onDemandCount} terrain, building and incident files cached on demand)`,
+    `(${onDemandCount} terrain, building and incident tiles cached on demand)`,
 );

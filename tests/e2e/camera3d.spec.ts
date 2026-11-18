@@ -1,18 +1,9 @@
 import { expect, test, type Page } from '@playwright/test';
+import { openMap } from './helpers';
 
 interface CameraState {
   pitch: number;
   bearing: number;
-}
-
-async function openMap(page: Page) {
-  await page.goto('/');
-  await expect(page.locator('.map-canvas')).toBeVisible();
-  await page.waitForFunction(
-    () => Boolean((window as unknown as { __nightmap?: unknown }).__nightmap),
-    undefined,
-    { timeout: 30_000 },
-  );
 }
 
 async function camera(page: Page): Promise<CameraState> {
@@ -126,7 +117,7 @@ test.describe('Scenario J — see the city in three dimensions', () => {
 
     const terrainRow = page.locator('.layer-item').filter({ hasText: /Terrain shading/ }).first();
     await expect(terrainRow).toContainText(/7 m per pixel/);
-    await expect(terrainRow).toContainText(/cannot show kerbs, stairs/);
+    await expect(terrainRow).toContainText(/not kerbs, stairs/);
     await expect(terrainRow).toContainText('offline after first use');
 
     const buildingRow = page.locator('.layer-item').filter({ hasText: /3D buildings/ }).first();
@@ -164,17 +155,22 @@ test.describe('Scenario J — see the city in three dimensions', () => {
     await expect(page.getByRole('dialog', { name: 'Mapillary street-level imagery' })).toBeVisible();
     await expect(page.getByLabel('Your Mapillary access token')).toBeVisible();
     await expect(page.getByText(/token stays in this panel's memory only/)).toBeVisible();
-    await expect(page.locator('.street-viewer-canvas')).toBeVisible();
+    await expect(page.locator('.street-viewer-credit')).toContainText('Imagery © Mapillary contributors');
   });
 
-  test('map controls are grouped into a floating tools menu and the overview map renders', async ({ page }) => {
+  test('map controls are visible and the overview map renders', async ({ page }) => {
     await openMap(page);
-    await expect(page.getByRole('button', { name: 'Map tools' })).toBeVisible();
-    await page.getByRole('button', { name: 'Map tools' }).click();
-    await expect(page.getByRole('dialog', { name: 'Map tools menu' })).toBeVisible();
-    await expect(page.getByRole('button', { name: /3D terrain/ })).toBeVisible();
-    await expect(page.getByRole('button', { name: /Satellite/ })).toBeVisible();
-    await expect(page.getByRole('button', { name: /Street view/ })).toBeVisible();
+    for (const name of [
+      '3D view',
+      'Toggle satellite imagery',
+      'Street-level imagery',
+      'Reset north and tilt',
+      'Realign to my GPS location',
+      'Layers',
+      'Map legend',
+    ]) {
+      await expect(page.getByRole('button', { name, exact: true }).first()).toBeVisible();
+    }
     await expect(page.locator('.mini-map-widget')).toBeVisible();
     await expect(page.locator('.mini-map-canvas canvas')).toBeVisible();
   });

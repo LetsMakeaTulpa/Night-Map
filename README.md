@@ -33,12 +33,12 @@ exercise offline behavior.
 ### Tests
 
 ```bash
-npm test             # 113 unit tests (hours, status, verification, cost/friction and disclosure rules, terrain/building and incident rules, building-registry rules, routing, selectors, data)
+npm test             # 165 unit tests across 26 files (hours, status, verification, cost/friction and disclosure rules, terrain/building and incident rules, building-registry rules, routing, selectors, presence/messages, data)
 npx playwright install chromium
-npx playwright test  # acceptance A–K (desktop + mobile)
+npx playwright test  # 21 acceptance scenarios across 6 specs (desktop + mobile)
 ```
 
-Scenario F (offline) runs against a real service worker and is skipped unless a
+The offline scenario runs against a real service worker and is skipped unless a
 production URL is supplied:
 
 ```bash
@@ -135,6 +135,18 @@ simplification or the height rules needs no network.
   saved routes, and an honest failure state (straight-line distance only).
 - Private field notes with optional photo, drafts, edit/delete, and local-only
   storage in IndexedDB. No publish action exists in this release.
+- **Private, location-locked messages.** Compose only in the Messages workspace —
+  never from the map — using a fresh high-accuracy GPS fix (no older than 15 s,
+  accurate to ±30 m). Text and photos are readable, editable or deletable only
+  from a fresh fix within 30 m of where the message was left. The map shows only
+  locked/nearby state, never message text, and an open message relocks when its
+  fix expires. These are self-addressed notes on this device; there is no server
+  delivery, sharing or moderation.
+- **Live GPS lock.** Turning on GPS lock starts a device watch and keeps the map
+  centred on each fresh fix until the map is dragged or the lock is stopped. The
+  first follow moves to street zoom; later fixes preserve the current zoom. The
+  crosshair remains a one-time realign action, and no simulated or map-centre
+  location is ever substituted for a device fix.
 - A report and review workflow: reports are structure-checked and screened for
   duplicates, get a visible status, are resolved in the Review queue, and every
   decision is appended to a change log. Corrections are local overrides and never
@@ -293,15 +305,18 @@ and in the inspector.
 ## Privacy
 
 - No accounts, analytics, or tracking pixels. No network writes: observations,
-  saves, routes, reports, review decisions, local corrections and settings stay in
-  this browser's IndexedDB.
+  private messages, saves, routes, reports, review decisions, local corrections
+  and settings stay in this browser's IndexedDB.
 - Photos are re-encoded through a canvas before storage, which removes EXIF, GPS,
   device, and timestamp metadata. The UI states that publication/sharing is not
   implemented.
 - Field notes are private by default and excluded from map layers unless the user
-  enables "My field notes". Nothing is published.
-- Location is opt-in per action. There is no continuous tracking, history, or
-  background geolocation. Search and lists work without permission.
+  enables "My field notes". Private messages show only a locked/nearby marker on
+  the map unless the private-messages layer is enabled. Nothing is published.
+- Location is opt-in per action. There is no background tracking or location
+  history. GPS lock runs a live device watch only while explicitly enabled, and it
+  stops when the map is dragged or GPS is turned off. Search and lists work
+  without permission.
 - Reported activity is published City data, not surveillance. Positions are snapped to about
   40 m, addresses, intersection names and free text are discarded before publication, and
   categories that describe a person's situation rather than a place are excluded — so these
@@ -355,12 +370,12 @@ enrolment address is published anywhere Night Map could verify.
   complaints, permits and notices of violation instead, and every classification is a
   reading of those records rather than a finding about occupancy. 2,043 of the 3,847
   dossiers have no City-published point and are not mapped, the bundled window starts in
-  2022, and only three rows of each kind travel with a dossier. There is no messaging or
-  geocache system: this release has no server, so a note left for another person could not
-  be delivered, verified or moderated.
-- Terrain is a coarse model (~7 m per pixel) drawn with a deliberate **×1.4 vertical
-  exaggeration**. It shows landform, not kerbs, stairs, retaining walls or whether a
-  slope is walkable, and an exaggerated relief is not a slope measurement.
+  2022, and only three rows of each kind travel with a dossier. There is no server-side
+  messaging or geocache system: private messages are self-addressed, location-locked notes
+  on this device, not messages delivered to another person or moderated by anyone else.
+- Terrain is a coarse model (~7 m per pixel) drawn at **true vertical scale (×1, no
+  exaggeration)**. It shows landform, not kerbs, stairs, retaining walls or whether a
+  slope is walkable; a coarse elevation model is not a slope survey.
 - Building heights are render heights. Most come from OpenStreetMap tags, but 3,167
   of 13,975 are footprint-type estimates, multipolygon building relations are not
   extracted, and a height says nothing about entrances, accessibility or ground-floor

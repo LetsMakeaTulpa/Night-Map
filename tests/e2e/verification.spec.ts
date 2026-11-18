@@ -1,4 +1,5 @@
 import { expect, test, type Page } from '@playwright/test';
+import { isMobileProject, searchAndOpen } from './helpers';
 
 /**
  * Scenario I — the verification workflow.
@@ -8,22 +9,10 @@ import { expect, test, type Page } from '@playwright/test';
  * desktop-only.
  */
 
-const isMobileProject = (name: string) => name === 'mobile';
-
 const DETAIL = 'Front doors were chained shut at 8pm and a paper sign said closed for staffing.';
 
 async function openPlace(page: Page, projectName: string, query: string, name: RegExp) {
-  if (isMobileProject(projectName)) {
-    await page.getByRole('button', { name: 'Search', exact: true }).click();
-  }
-  const input = page.getByLabel('Search Night Map');
-  await input.fill('');
-  await input.waitFor({ state: 'visible' });
-  await input.fill(query);
-  const hit = page.locator('.search-hit').filter({ hasText: name }).first();
-  await hit.waitFor({ state: 'visible' });
-  await hit.click();
-  await expect(page.locator('.inspector')).toBeVisible();
+  await searchAndOpen(page, query, name);
 }
 
 /** The form stays open when a report needs more information, so only toggle it when it is closed. */
@@ -136,7 +125,7 @@ test.describe('Scenario I — reports are checked, reviewed and logged', () => {
     await expect(updated.getByText('Closure reported on this device').first()).toBeVisible();
     await expect(updated.getByText('Open now not confirmed').first()).toBeVisible();
     await expect(updated.getByRole('heading', { name: 'Local correction on this device' })).toBeVisible();
-    await updated.getByRole('tab', { name: /History/ }).click();
+    await updated.getByRole('tab', { name: /Evidence/ }).click();
     await expect(updated.getByText('Checked against provider page').first()).toBeVisible();
     await expect(updated.getByText('Closure reported').first()).toBeVisible();
     await expect(updated.getByText(/Source retrieved for this release/).first()).toBeVisible();

@@ -170,6 +170,13 @@
   padding-bottom: 24px;
 }
 
+.dossier-intro {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 156px;
+  gap: 14px;
+  align-items: start;
+}
+
 .dossier-head {
   display: grid;
   gap: 6px;
@@ -227,6 +234,156 @@
   font-size: 12px;
   line-height: 1.5;
   color: var(--text-2);
+}
+
+.dossier-photo {
+  display: grid;
+  gap: 7px;
+  margin: 0;
+  min-width: 0;
+}
+
+.dossier-photo-frame {
+  position: relative;
+  display: grid;
+  place-items: center;
+  min-height: 112px;
+  overflow: hidden;
+  border: var(--border-w) solid var(--line);
+  border-radius: 10px;
+  background: #0c1317;
+}
+
+.dossier-photo-frame img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  min-height: 112px;
+  object-fit: cover;
+}
+
+.dossier-photo-kind {
+  position: absolute;
+  top: 6px;
+  left: 6px;
+  padding: 2px 6px;
+  border-radius: 999px;
+  background: rgba(8, 14, 18, 0.82);
+  color: #bfefff;
+  font-size: 9px;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.dossier-photo-message {
+  display: grid;
+  justify-items: start;
+  gap: 5px;
+  width: 100%;
+  padding: 10px;
+  color: var(--muted);
+  font-size: 10.5px;
+  line-height: 1.4;
+}
+
+.dossier-photo-message strong {
+  color: var(--text-2);
+  font-size: 11.5px;
+}
+
+.dossier-photo-icon {
+  width: 22px;
+  height: 22px;
+  fill: none;
+  stroke: #37d5ff;
+  stroke-width: 1.5;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.dossier-photo-message .link-button,
+.dossier-photo-controls .link-button {
+  font-size: 10.5px;
+}
+
+.dossier-photo-controls {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 5px 8px;
+}
+
+.dossier-photo figcaption {
+  display: grid;
+  gap: 2px;
+  color: var(--muted);
+  font-size: 10px;
+  line-height: 1.35;
+}
+
+.dossier-photo-label {
+  color: var(--text-2);
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.dossier-photo-credit a {
+  color: var(--text-2);
+}
+
+.dossier-photo-controls {
+  margin-top: 3px;
+}
+
+.dossier-photo-controls .icon-button {
+  width: 32px;
+  height: 32px;
+  display: inline-grid;
+  place-items: center;
+  border: var(--border-w-soft) solid var(--line);
+  border-radius: 5px;
+  background: none;
+  color: var(--text-2);
+  font-size: 13px;
+  line-height: 1;
+}
+
+.dossier-photo-controls .icon-button:disabled {
+  opacity: 0.4;
+}
+
+@media (max-width: 720px) {
+  .dossier-intro {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 10px;
+  }
+
+  .dossier-photo {
+    order: -1;
+  }
+
+  .dossier-photo-frame img {
+    max-height: 220px;
+  }
+
+  .dossier-photo-message {
+    padding: 12px;
+  }
+
+  /* Photo navigation is a primary touch action on a phone. */
+  .dossier-photo-controls .icon-button {
+    width: 44px;
+    height: 44px;
+    font-size: 17px;
+  }
+
+  .dossier-photo-controls .link-button {
+    display: inline-flex;
+    align-items: center;
+    min-height: 44px;
+  }
 }
 
 .dossier-actions {
