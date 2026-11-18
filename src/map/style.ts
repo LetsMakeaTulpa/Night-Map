@@ -68,6 +68,57 @@ const coverage = {
   ],
 };
 
+/** A quarter-degree margin keeps the mask's outer edge off every allowed view. */
+const MASK_MARGIN = 0.25;
+const outsideMask = {
+  type: 'FeatureCollection' as const,
+  features: [
+    {
+      type: 'Feature' as const,
+      properties: {},
+      geometry: {
+        type: 'Polygon' as const,
+        coordinates: [
+          [
+            [COVERAGE_WEST - MASK_MARGIN, COVERAGE_SOUTH - MASK_MARGIN],
+            [COVERAGE_EAST + MASK_MARGIN, COVERAGE_SOUTH - MASK_MARGIN],
+            [COVERAGE_EAST + MASK_MARGIN, COVERAGE_NORTH + MASK_MARGIN],
+            [COVERAGE_WEST - MASK_MARGIN, COVERAGE_NORTH + MASK_MARGIN],
+            [COVERAGE_WEST - MASK_MARGIN, COVERAGE_SOUTH - MASK_MARGIN],
+          ],
+          [
+            [COVERAGE_WEST, COVERAGE_SOUTH],
+            [COVERAGE_WEST, COVERAGE_NORTH],
+            [COVERAGE_EAST, COVERAGE_NORTH],
+            [COVERAGE_EAST, COVERAGE_SOUTH],
+            [COVERAGE_WEST, COVERAGE_SOUTH],
+          ],
+        ],
+      },
+    },
+  ],
+};
+
+const coverageBoundary = {
+  type: 'FeatureCollection' as const,
+  features: [
+    {
+      type: 'Feature' as const,
+      properties: {},
+      geometry: {
+        type: 'LineString' as const,
+        coordinates: [
+          [COVERAGE_WEST, COVERAGE_SOUTH],
+          [COVERAGE_EAST, COVERAGE_SOUTH],
+          [COVERAGE_EAST, COVERAGE_NORTH],
+          [COVERAGE_WEST, COVERAGE_NORTH],
+          [COVERAGE_WEST, COVERAGE_SOUTH],
+        ],
+      },
+    },
+  ],
+};
+
 // MapLibre hands vector tile templates to the worker as Request objects, so this
 // has to be absolute even though the page and style are same-origin.
 const ROAD_TILES =
@@ -91,6 +142,8 @@ export function buildStyle(): StyleSpecification {
         maxzoom: 15,
       },
       coverage: { type: 'geojson', data: coverage as GeoJSON.FeatureCollection },
+      outsideMask: { type: 'geojson', data: outsideMask as GeoJSON.FeatureCollection },
+      coverageBoundary: { type: 'geojson', data: coverageBoundary as GeoJSON.FeatureCollection },
       green: { type: 'geojson', data: green as GeoJSON.FeatureCollection },
       water: { type: 'geojson', data: water as GeoJSON.FeatureCollection },
       coastline: { type: 'geojson', data: coastline as GeoJSON.FeatureCollection },
@@ -481,6 +534,43 @@ export function buildStyle(): StyleSpecification {
           'text-color': '#8FA6B4',
           'text-halo-color': THEME.halo,
           'text-halo-width': 1.3,
+        },
+      },
+      {
+        // The mapped extract is a hole in this faint wash. It sits above the
+        // street layers so buffered tiles just beyond the boundary are dimmed
+        // too, and below the boundary label so the edge stays legible.
+        id: 'outside-mask',
+        type: 'fill',
+        source: 'outsideMask',
+        layout: { visibility: 'none' },
+        paint: { 'fill-color': '#04090B', 'fill-opacity': 0.28 },
+      },
+      {
+        // Repeats along whichever part of the amber boundary is on screen. It
+        // never competes for placement, so the edge stays labelled while the
+        // view is partial.
+        id: 'coverage-edge-label',
+        type: 'symbol',
+        source: 'coverageBoundary',
+        layout: {
+          visibility: 'none',
+          'symbol-placement': 'line',
+          'text-field': 'Edge of coverage',
+          'text-font': FONT,
+          'text-transform': 'uppercase',
+          'text-size': ['interpolate', ['linear'], ['zoom'], 12, 10, 16, 11.5],
+          'text-letter-spacing': 0.14,
+          'symbol-spacing': 480,
+          'text-padding': 2,
+          'text-allow-overlap': true,
+          'text-ignore-placement': true,
+        },
+        paint: {
+          'text-color': '#F7D28C',
+          'text-halo-color': '#04080A',
+          'text-halo-width': 2.2,
+          'text-opacity': 0.94,
         },
       },
       {

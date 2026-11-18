@@ -582,12 +582,13 @@ body.is-resizing {
   inset: 0;
   display: flex;
   flex-direction: column;
+  align-items: center;
   gap: 10px;
   justify-content: center;
   padding: 32px;
   background: var(--ink-1);
   color: var(--text-2);
-  z-index: 5;
+  z-index: 6;
 }
 
 .map-failed h3 {
@@ -595,6 +596,36 @@ body.is-resizing {
   font-size: 24px;
   color: var(--text);
   font-weight: 500;
+}
+
+.map-failed-card {
+  width: min(460px, 100%);
+  padding: 24px 26px 22px;
+  border: var(--border-w) solid var(--line);
+  border-radius: var(--radius-lg);
+  background: rgba(11, 19, 16, 0.97);
+  box-shadow: var(--shadow);
+}
+
+.map-failed-card h3 {
+  margin: 0 0 8px;
+}
+
+.map-failed-card p:not(.map-loading-eyebrow) {
+  margin: 0 0 10px;
+  color: var(--text-2);
+  font-size: 13px;
+  line-height: 1.55;
+}
+
+.map-failed-card .map-failed-detail {
+  font-size: 11px;
+  color: var(--muted);
+  word-break: break-word;
+}
+
+.map-failed-card .button {
+  margin-top: 4px;
 }
 
 .map-topline {
@@ -1404,6 +1435,72 @@ body.is-resizing {
   top: 84px;
 }
 
+/* The partial-edge companion to the full notice. It only claims that the
+   mapped extract ends here; the mask and boundary labels carry the rest. */
+.coverage-edge-chip {
+  position: absolute;
+  top: 84px;
+  left: 50%;
+  z-index: 12;
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  padding: 6px 10px;
+  transform: translateX(-50%);
+  border: var(--border-w-soft) solid rgba(224, 164, 88, 0.35);
+  border-radius: 999px;
+  background: rgba(11, 19, 16, 0.9);
+  color: var(--text-2);
+  font: inherit;
+  font-size: 10.5px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.coverage-edge-chip:hover,
+.coverage-edge-chip.is-open {
+  border-color: rgba(224, 164, 88, 0.68);
+  background: rgba(26, 34, 25, 0.96);
+  color: var(--text);
+}
+
+.coverage-edge-more {
+  color: var(--accent);
+  font-size: 9px;
+  letter-spacing: 0.08em;
+}
+
+.coverage-edge-dash {
+  width: 18px;
+  border-top: 1px dashed var(--accent);
+}
+
+.app-mobile .coverage-edge-chip {
+  top: 58px;
+  left: 12px;
+  transform: none;
+}
+
+/* At very narrow widths the chip and the overview map cannot share the row.
+   Drop the chip below the overview rather than letting them overlap. */
+@media (max-width: 380px) {
+  .app-mobile .coverage-edge-chip {
+    top: 166px;
+  }
+}
+
+/* The phone panel covers the chip. Hide the now-invisible toggle so it cannot
+   sit underneath the dialog as a hidden focus target. */
+.app-mobile .map-stage.has-coverage-panel .coverage-edge-chip {
+  visibility: hidden;
+}
+
+.app-mobile .coverage-edge-more {
+  display: none;
+}
+
 /* Shown only after the map centre crosses the installed extract boundary. */
 .coverage-notice {
   position: absolute;
@@ -1470,6 +1567,215 @@ body.is-resizing {
   display: none;
 }
 
+.coverage-notice-actions {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.coverage-all-compact {
+  display: none;
+}
+
+/* The boundary's compact reference card. It is opened from the edge chip or
+   by tapping the amber line itself, and explains the extract rather than
+   duplicating the full outside notice. */
+.coverage-panel {
+  position: absolute;
+  top: 160px;
+  right: 58px;
+  z-index: 14;
+  width: min(348px, calc(100% - 24px));
+  max-height: calc(100% - 174px);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding: 13px 14px 14px;
+  border: var(--border-w) solid rgba(224, 164, 88, 0.3);
+  border-radius: var(--radius-lg);
+  background: rgba(13, 20, 24, 0.97);
+  box-shadow: var(--shadow);
+  backdrop-filter: blur(10px);
+}
+
+.coverage-panel-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.coverage-panel-head .eyebrow {
+  font-size: 9.5px;
+}
+
+.coverage-panel-head h3 {
+  margin-top: 2px;
+  font-family: var(--font-display);
+  font-size: 21px;
+  font-weight: 500;
+  line-height: 1.15;
+}
+
+.coverage-panel-map {
+  margin-top: 10px;
+}
+
+.coverage-panel-map-canvas {
+  position: relative;
+  height: 126px;
+  overflow: hidden;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--ink-2);
+}
+
+.coverage-panel-map-canvas .maplibregl-ctrl-attrib,
+.coverage-panel-map-canvas .maplibregl-ctrl-logo {
+  display: none !important;
+}
+
+.coverage-panel-map-key {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  margin-top: 5px;
+  font-size: 9.5px;
+  color: var(--faint);
+}
+
+.coverage-key-extract {
+  width: 14px;
+  border-top: 2px dashed var(--accent);
+}
+
+.coverage-key-view {
+  width: 10px;
+  height: 8px;
+  margin-left: 4px;
+  border: 1px solid var(--text-2);
+  border-radius: 2px;
+}
+
+.coverage-facts {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 1px;
+  margin-top: 11px;
+  overflow: hidden;
+  border: 1px solid var(--line-soft);
+  border-radius: 9px;
+  background: var(--line-soft);
+}
+
+.coverage-facts > div {
+  padding: 7px 9px;
+  background: rgba(15, 25, 21, 0.98);
+}
+
+.coverage-facts dt {
+  font-size: 9px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.coverage-facts dd {
+  margin: 1px 0 0;
+  color: var(--text);
+  font-size: 15px;
+  font-variant-numeric: tabular-nums;
+}
+
+.coverage-section {
+  margin-top: 11px;
+}
+
+.coverage-section h4 {
+  margin-bottom: 4px;
+  color: var(--accent);
+  font-size: 9.5px;
+  font-weight: 600;
+  letter-spacing: 0.13em;
+  text-transform: uppercase;
+}
+
+.coverage-rows > div {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 3px 0;
+  border-bottom: 1px solid rgba(36, 56, 47, 0.55);
+  font-size: 11px;
+}
+
+.coverage-rows dt {
+  flex: none;
+  color: var(--muted);
+}
+
+.coverage-rows dd {
+  margin: 0;
+  color: var(--text-2);
+  text-align: right;
+}
+
+.coverage-list {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.coverage-list li {
+  position: relative;
+  padding-left: 10px;
+  color: var(--muted);
+  font-size: 11px;
+  line-height: 1.45;
+}
+
+.coverage-list li::before {
+  content: '·';
+  position: absolute;
+  left: 0;
+  color: var(--accent);
+}
+
+.coverage-list strong {
+  color: var(--text-2);
+  font-weight: 600;
+}
+
+.coverage-panel-actions {
+  display: flex;
+  gap: 6px;
+  margin-top: 12px;
+  padding-top: 10px;
+  border-top: 1px solid var(--line-soft);
+}
+
+.app-desktop.has-inspector .coverage-panel {
+  right: 456px;
+}
+
+.app-mobile .coverage-panel {
+  top: 58px;
+  right: 12px;
+  left: 12px;
+  width: auto;
+  max-height: calc(100% - 150px);
+}
+
+@media (max-width: 900px) {
+  .coverage-panel {
+    top: 58px;
+    right: 12px;
+    left: 12px;
+    width: auto;
+    max-height: calc(100% - 140px);
+  }
+}
+
 /* On desktop the notice sits below the overview minimap and only occupies the
    map area left between open panels. The right inset leaves room for the map
    control column instead of covering it. */
@@ -1516,6 +1822,14 @@ body.is-resizing {
   display: inline;
 }
 
+.app-mobile .coverage-all-full {
+  display: none;
+}
+
+.app-mobile .coverage-all-compact {
+  display: inline;
+}
+
 .app-mobile .map-stage.has-coverage-notice .mini-map-widget {
   display: none;
 }
@@ -1530,7 +1844,7 @@ body.is-resizing {
     left: 12px;
     right: auto;
     width: auto;
-    max-width: 294px;
+    max-width: 340px;
     margin: 0;
     padding: 8px 10px 8px 12px;
   }
@@ -1548,6 +1862,14 @@ body.is-resizing {
   }
 
   .app-desktop.has-panel.has-inspector .coverage-return-compact {
+    display: inline;
+  }
+
+  .app-desktop.has-panel.has-inspector .coverage-all-full {
+    display: none;
+  }
+
+  .app-desktop.has-panel.has-inspector .coverage-all-compact {
     display: inline;
   }
 }

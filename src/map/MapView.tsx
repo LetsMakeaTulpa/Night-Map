@@ -2,12 +2,15 @@ import { useEffect, useRef, useState } from 'react';
 import maplibregl, { type Map as MapLibreMap, type MapGeoJSONFeature } from 'maplibre-gl';
 import 'maplibre-gl/dist/maplibre-gl.css';
 import { buildStyle, COVERAGE_BBOX, EMPTY_FC } from './style';
+import { coverageInAperture, visibleAperture, type ApertureOverlay, type CoverageView } from './aperture';
 import { buildMarkerImages, buildLocationDot } from './icons';
 import { useStore } from '../state/store';
 import { CATEGORIES, SWATCH } from '../domain/categories';
 import { isFixFresh, MESSAGE_UNLOCK_RADIUS_M, messageMarkerState } from '../domain/messages';
 import { formatDistance } from '../domain/geo';
+import { formatDate } from '../domain/status';
 import { dataset } from '../data';
+import buildingRegistryMeta from '../data/building-registry-meta.json';
 import type { PlaceView } from '../state/selectors';
 import { LAYERS } from './layers';
 import {
@@ -50,6 +53,52 @@ export interface MapLiveCounts {
   abandoned: number;
 }
 
+type BasemapFailureCause = 'webgl' | 'style' | 'tiles' | 'offline';
+
+interface BasemapFailure {
+  cause: BasemapFailureCause;
+  detail?: string;
+}
+
+type BasemapState = 'loading' | 'ready' | 'failed';
+
+/**
+ * A basemap that has not painted a road frame by now is treated as failed, not
+ * as still loading. The overlay explains the cause instead of leaving a blank
+ * map under an endless spinner, and Retry below rebuilds it.
+ */
+const BASEMAP_FAILURE_TIMEOUT_MS = 8_000;
+
+/** The camera cannot zoom past the bundled street extract's useful range. */
+const MAP_MIN_ZOOM = 11.4;
+const MAP_MAX_ZOOM = 18.5;
+const MAX_PITCH = 78;
+
+const SOURCE_RETRIEVED_DATES = [...new Set(dataset.data.sources.map((source) => source.retrievedAt))].sort();
+const SOURCE_RETRIEVED_RANGE =
+  SOURCE_RETRIEVED_DATES.length > 1
+    ? `${formatDate(SOURCE_RETRIEVED_DATES[0])} – ${formatDate(SOURCE_RETRIEVED_DATES[SOURCE_RETRIEVED_DATES.length - 1])}`
+    : formatDate(SOURCE_RETRIEVED_DATES[0]);
+
+const BASEMAP_FAILURE_COPY: Record<BasemapFailureCause, { title: string; body: string }> = {
+  offline: {
+    title: 'Street map not cached',
+    body: 'You are offline and the street tiles for this view are not stored on this device yet. This is a connection failure, not the edge of Night Map coverage.',
+  },
+  tiles: {
+    title: 'Street tiles did not load',
+    body: 'The basemap tiles could not be fetched, so the street grid is missing. This is a tile load failure, not the edge of Night Map coverage.',
+  },
+  style: {
+    title: 'Map style did not load',
+    body: 'The map style could not be read, so no streets can be drawn. This is a style failure, not the edge of Night Map coverage.',
+  },
+  webgl: {
+    title: 'The map renderer could not start',
+    body: 'This browser could not start the WebGL map canvas. This is a rendering failure, not the edge of Night Map coverage.',
+  },
+};
+
 const MAP_PADDING = () => {
   const desktop = window.innerWidth >= 1000;
   return { top: 76, bottom: desktop ? 76 : 240, left: desktop ? 348 : 24, right: desktop ? 424 : 24 };
@@ -59,7 +108,36 @@ const TERRAIN_SOURCE_ID = 'terrain';
 /** Terrain displacement uses the elevation model at its actual vertical scale. */
 const TERRAIN_EXAGGERATION = 1.0;
 const PITCH_3D = 55;
-const [COVERAGE_WEST, COVERAGE_SOUTH, COVERAGE_EAST, COVERAGE_NORTH] = COVERAGE_BBOX;
+
+/**
+ * Surfaces that sit above the canvas and hide map rather than merely decorate
+ * it. Each is pinned to the edge it grows from, so its inset takes area off
+ * that edge only.
+ */
+const COVERAGE_OCCLUDERS: ReadonlyArray<{ selector: string; edge: ApertureOverlay['edge'] }> = [
+  { selector: '.side-rail', edge: 'left' },
+  { selector: '.panel-left', edge: 'left' },
+  { selector: '.panel-right', edge: 'right' },
+  { selector: '.bottom-bar', edge: 'bottom' },
+  { selector: '.mobile-top', edge: 'top' },
+  { selector: '.sheet', edge: 'bottom' },
+  { selector: '.mobile-nav', edge: 'bottom' },
+];
+
+/** Pixel distance from a tap to a line segment in the projected map. */
+function distanceToSegment(
+  point: { x: number; y: number },
+  a: { x: number; y: number },
+  b: { x: number; y: number },
+) {
+  const dx = b.x - a.x;
+  const dy = b.y - a.y;
+  const lengthSquared = dx * dx + dy * dy;
+  const t = lengthSquared === 0
+    ? 0
+    : Math.max(0, Math.min(1, ((point.x - a.x) * dx + (point.y - a.y) * dy) / lengthSquared));
+  return Math.hypot(point.x - (a.x + t * dx), point.y - (a.y + t * dy));
+}
 
 /**
  * One step of the alert pulse. This changes paint only: no layer is added,
@@ -77,16 +155,20 @@ export function MapView({ views, onOpenLayers }: MapViewProps) {
   const mapRef = useRef<MapLibreMap | null>(null);
   const overviewContainerRef = useRef<HTMLDivElement | null>(null);
   const overviewMapRef = useRef<MapLibreMap | null>(null);
+  const coveragePanelContainerRef = useRef<HTMLDivElement | null>(null);
+  const coveragePanelMapRef = useRef<MapLibreMap | null>(null);
   const [ready, setReady] = useState(false);
   // Distinguishes "the style parsed" from "there is a street grid to look at."
   // The overlay stays up until the roads source is loaded and a road frame has
   // actually painted, not merely until the source reports loaded.
   const [basemapReady, setBasemapReady] = useState(false);
   const basemapReadyRef = useRef(false);
-  const [noCoverageInView, setNoCoverageInView] = useState(false);
+  const [basemapFailure, setBasemapFailure] = useState<BasemapFailure | null>(null);
+  const [mapAttempt, setMapAttempt] = useState(0);
+  const [coverageView, setCoverageView] = useState<CoverageView>('inside');
   const [clock, setClock] = useState(() => Date.now());
-  const [mapError, setMapError] = useState<string | null>(null);
   const [legendOpen, setLegendOpen] = useState(false);
+  const [coveragePanelOpen, setCoveragePanelOpen] = useState(false);
   const [camera, setCamera] = useState({ pitch: 0, bearing: 0 });
   const [buildingsState, setBuildingsState] = useState({ loaded: 0, failed: 0 });
   const [registryState, setRegistryState] = useState<{ loaded: number; error: string | null }>({ loaded: 0, error: null });
@@ -106,6 +188,14 @@ export function MapView({ views, onOpenLayers }: MapViewProps) {
   const [streetLevelCoordinates, setStreetLevelCoordinates] = useState<[number, number]>([-122.4085, 37.7835]);
   const locationMarker = useRef<maplibregl.Marker | null>(null);
   const gpsFollowStarted = useRef(false);
+  /** The last camera whose visible aperture still contained mapped ground. */
+  const lastCoveredCamera = useRef<{
+    center: [number, number];
+    zoom: number;
+    bearing: number;
+    pitch: number;
+    padding: ReturnType<MapLibreMap['getPadding']>;
+  } | null>(null);
   const selectedPlace = state.selectedPlaceId
     ? dataset.placeById.get(state.selectedPlaceId) ?? (state.selectedPlaceId.startsWith('private:')
         ? (() => {
@@ -134,8 +224,8 @@ export function MapView({ views, onOpenLayers }: MapViewProps) {
         // Start at pedestrian scale: streets and building footprints are the
         // primary navigation surface, not a neighbourhood overview.
         zoom: 16.2,
-        minZoom: 11.4,
-        maxZoom: 18.5,
+        minZoom: MAP_MIN_ZOOM,
+        maxZoom: MAP_MAX_ZOOM,
         maxBounds: [
           [-122.475, 37.735],
           [-122.345, 37.82],
@@ -146,7 +236,7 @@ export function MapView({ views, onOpenLayers }: MapViewProps) {
         dragRotate: true,
         pitchWithRotate: true,
         touchPitch: true,
-        maxPitch: 78,
+        maxPitch: MAX_PITCH,
         antialias: true,
         // Retina phones at 3× render four times the pixels of a 1× canvas. A 2×
         // backing store keeps labels sharp while cutting fill-rate on first paint.
@@ -154,22 +244,114 @@ export function MapView({ views, onOpenLayers }: MapViewProps) {
         fadeDuration: 0,
       });
     } catch (err) {
-      setMapError((err as Error).message);
+      setBasemapFailure({ cause: 'webgl', detail: (err as Error).message });
       return;
     }
     mapRef.current = map;
-    const updateCoverage = () => {
-      // The notice is for a viewport with no mapped ground in it. If any part of
-      // the footprint is visible, the amber boundary explains the blank edges.
-      const view = map.getBounds();
-      const showsCoverage =
-        view.getEast() > COVERAGE_WEST &&
-        view.getWest() < COVERAGE_EAST &&
-        view.getNorth() > COVERAGE_SOUTH &&
-        view.getSouth() < COVERAGE_NORTH;
-      setNoCoverageInView(!showsCoverage);
+    let styleLoaded = false;
+    let failed = false;
+    let failureTimer = 0;
+    let coverageFrame = 0;
+    const stopFailureTimer = () => {
+      if (failureTimer) window.clearTimeout(failureTimer);
+      failureTimer = 0;
     };
-    map.on('moveend', updateCoverage);
+    const failBasemap = (cause: BasemapFailureCause, detail?: string) => {
+      if (failed || mapRef.current !== map) return;
+      failed = true;
+      stopFailureTimer();
+      basemapReadyRef.current = false;
+      setBasemapReady(false);
+      setBasemapFailure({ cause, detail });
+    };
+    const diagnoseFailure = () => {
+      failureTimer = 0;
+      if (basemapReadyRef.current || failed) return;
+      if (!navigator.onLine) failBasemap('offline');
+      else if (!styleLoaded) failBasemap('style');
+      else failBasemap('tiles');
+    };
+    // `isSourceLoaded` can turn true after every tile request has failed, so the
+    // basemap only counts as ready once a road line has actually painted.
+    const roadsArePainted = () => {
+      try {
+        return Boolean(map.getLayer('roads')) && map.queryRenderedFeatures({ layers: ['roads'] }).length > 0;
+      } catch {
+        return false;
+      }
+    };
+    const markBasemapReady = () => {
+      if (basemapReadyRef.current || mapRef.current !== map) return;
+      if (!styleLoaded || !roadsArePainted()) return;
+      basemapReadyRef.current = true;
+      failed = false;
+      stopFailureTimer();
+      setBasemapFailure(null);
+      setBasemapReady(true);
+    };
+    failureTimer = window.setTimeout(diagnoseFailure, BASEMAP_FAILURE_TIMEOUT_MS);
+    const updateCoverage = () => {
+      coverageFrame = 0;
+      if (mapRef.current !== map) return;
+      // The notice is for a viewport with no mapped ground in it. `getBounds()`
+      // includes the canvas behind the workspace panel, the inspector and the
+      // phone dock, so measure the aperture a reader can actually see first:
+      // coverage that only exists under a panel must not silence the notice.
+      const canvas = map.getContainer().getBoundingClientRect();
+      const overlays: ApertureOverlay[] = [];
+      for (const { selector, edge } of COVERAGE_OCCLUDERS) {
+        for (const element of document.querySelectorAll<HTMLElement>(selector)) {
+          overlays.push({ box: element.getBoundingClientRect(), edge });
+        }
+      }
+      const aperture = visibleAperture(canvas, overlays);
+      const points: Array<[number, number]> = aperture
+        ? [
+            [aperture.left, aperture.top],
+            [aperture.right, aperture.top],
+            [aperture.right, aperture.bottom],
+            [aperture.left, aperture.bottom],
+          ]
+        : [
+            [0, 0],
+            [canvas.width, 0],
+            [canvas.width, canvas.height],
+            [0, canvas.height],
+          ];
+      const corners = points.map((point) => {
+        const position = map.unproject(point);
+        return [position.lng, position.lat] as const;
+      });
+      const view = coverageInAperture(corners, COVERAGE_BBOX);
+      if (view !== 'outside' && basemapReadyRef.current) {
+        // Keep the view that still had mapped ground in it. Return should put
+        // the reader back where they left off, not fit the whole extract.
+        const centre = map.getCenter();
+        lastCoveredCamera.current = {
+          center: [centre.lng, centre.lat],
+          zoom: map.getZoom(),
+          bearing: map.getBearing(),
+          pitch: map.getPitch(),
+          padding: map.getPadding(),
+        };
+      }
+      setCoverageView(view);
+    };
+    const scheduleCoverage = () => {
+      if (coverageFrame) return;
+      coverageFrame = window.requestAnimationFrame(updateCoverage);
+    };
+    map.on('moveend', scheduleCoverage);
+    map.on('resize', scheduleCoverage);
+    // Panels open and close, and the phone sheet resizes, without moving the
+    // camera. Re-measure the aperture when the layout changes as well.
+    const layoutChanges = new MutationObserver(scheduleCoverage);
+    const app = map.getContainer().closest('.app');
+    if (app) {
+      layoutChanges.observe(app, { attributes: true, attributeFilter: ['class', 'style'], subtree: true });
+    }
+    const layoutResizes = new ResizeObserver(scheduleCoverage);
+    layoutResizes.observe(map.getContainer());
     updateCoverage();
     // Development hooks are also exposed to an automated browser so the
     // Playwright suite can exercise the built production preview with the same
@@ -190,6 +372,7 @@ export function MapView({ views, onOpenLayers }: MapViewProps) {
     const setup = () => {
       if (setupDone) return;
       setupDone = true;
+      styleLoaded = true;
       try {
         for (const image of buildMarkerImages()) {
           if (!map.hasImage(image.id)) map.addImage(image.id, image.data);
@@ -200,7 +383,7 @@ export function MapView({ views, onOpenLayers }: MapViewProps) {
         console.info('[night-map] map style ready, marker images installed');
       } catch (err) {
         console.error('[night-map] marker setup failed', err);
-        setMapError((err as Error).message);
+        failBasemap('style', (err as Error).message);
       }
     };
     map.on('style.load', setup);
@@ -211,9 +394,9 @@ export function MapView({ views, onOpenLayers }: MapViewProps) {
       const message = (event.error as Error | undefined)?.message ?? 'Map failed to render';
       const sourceId = (event as { sourceId?: string }).sourceId;
       console.info('[night-map] map event error', message, sourceId ?? '');
-      // Style resource errors are noisy but not fatal; only fail the canvas on
-      // a WebGL context problem.
-      if (/webgl|context/i.test(message)) setMapError(message);
+      // Glyph and satellite errors are noisy but not fatal. A WebGL context
+      // problem is: the canvas can no longer draw anything.
+      if (/webgl|context/i.test(message)) failBasemap('webgl', message);
       // Elevation tiles are fetched on demand, so the first offline attempt can
       // legitimately fail. Say so instead of showing a flat map as if it were real.
       if (sourceId === TERRAIN_SOURCE_ID) setTerrainTilesMissing(true);
@@ -225,25 +408,29 @@ export function MapView({ views, onOpenLayers }: MapViewProps) {
         if (!basemapReadyRef.current) {
           // A source-loaded event can arrive before the first frame that contains
           // the new line geometry. Hold the opaque loading layer until MapLibre
-          // has actually painted a frame, so it cannot uncover a half-drawn grid.
+          // has actually painted road lines, so neither a half-drawn grid nor a
+          // failed tile range is mistaken for a ready basemap.
           map.triggerRepaint();
-          map.once('render', () => {
-            if (basemapReadyRef.current || mapRef.current !== map) return;
-            basemapReadyRef.current = true;
-            setBasemapReady(true);
-          });
+          map.once('render', markBasemapReady);
         }
       }
       if (detail.sourceId === TERRAIN_SOURCE_ID && detail.isSourceLoaded) setTerrainTilesMissing(false);
       if (detail.sourceId === BUILDINGS_SOURCE_ID && detail.isSourceLoaded) setTerrainTilesMissing(false);
     });
+    map.on('idle', markBasemapReady);
 
     return () => {
-      map.off('moveend', updateCoverage);
+      map.off('moveend', scheduleCoverage);
+      map.off('resize', scheduleCoverage);
+      layoutChanges.disconnect();
+      layoutResizes.disconnect();
+      if (coverageFrame) window.cancelAnimationFrame(coverageFrame);
+      stopFailureTimer();
+      map.off('idle', markBasemapReady);
       map.remove();
       mapRef.current = null;
     };
-  }, []);
+  }, [mapAttempt]);
 
 
   // Small orientation map: a separate, lightweight basemap with the current
@@ -347,6 +534,114 @@ export function MapView({ views, onOpenLayers }: MapViewProps) {
       overviewMapRef.current = null;
     };
   }, [ready, basemapReady]);
+
+  // A compact orientation map for the coverage panel. It is built only while
+  // the panel is open, so the third WebGL context is not paid for by readers
+  // who never ask what the boundary means.
+  useEffect(() => {
+    if (!coveragePanelOpen) return;
+    const container = coveragePanelContainerRef.current;
+    const main = mapRef.current;
+    if (!container || !main) return;
+    const [west, south, east, north] = COVERAGE_BBOX;
+    let mini: MapLibreMap;
+    try {
+      mini = new maplibregl.Map({
+        container,
+        style: 'https://basemaps.cartocdn.com/gl/dark-matter-gl-style/style.json',
+        bounds: [
+          [west - 0.012, south - 0.008],
+          [east + 0.012, north + 0.008],
+        ],
+        fitBoundsOptions: { padding: 8 },
+        attributionControl: false,
+        interactive: false,
+        fadeDuration: 0,
+        pixelRatio: 1,
+      });
+    } catch {
+      return;
+    }
+    coveragePanelMapRef.current = mini;
+    let active = true;
+    mini.once('load', () => {
+      if (!active) return;
+      const view = main.getBounds();
+      mini.addSource('coverage-extract', {
+        type: 'geojson',
+        data: {
+          type: 'FeatureCollection',
+          features: [
+            {
+              type: 'Feature',
+              properties: {},
+              geometry: {
+                type: 'Polygon',
+                coordinates: [[
+                  [west, south], [east, south], [east, north], [west, north], [west, south],
+                ]],
+              },
+            },
+          ],
+        },
+      });
+      mini.addLayer({
+        id: 'coverage-extract-fill',
+        type: 'fill',
+        source: 'coverage-extract',
+        paint: { 'fill-color': '#E0A458', 'fill-opacity': 0.14 },
+      });
+      mini.addLayer({
+        id: 'coverage-extract-line',
+        type: 'line',
+        source: 'coverage-extract',
+        paint: { 'line-color': '#F0C674', 'line-width': 1.8, 'line-dasharray': [4, 2] },
+      });
+      mini.addSource('coverage-view', {
+        type: 'geojson',
+        data: {
+          type: 'FeatureCollection',
+          features: [
+            {
+              type: 'Feature',
+              properties: {},
+              geometry: {
+                type: 'Polygon',
+                coordinates: [[
+                  [view.getWest(), view.getSouth()],
+                  [view.getEast(), view.getSouth()],
+                  [view.getEast(), view.getNorth()],
+                  [view.getWest(), view.getNorth()],
+                  [view.getWest(), view.getSouth()],
+                ]],
+              },
+            },
+          ],
+        },
+      });
+      mini.addLayer({
+        id: 'coverage-view-line',
+        type: 'line',
+        source: 'coverage-view',
+        paint: { 'line-color': '#E9E5DC', 'line-width': 1.2, 'line-opacity': 0.8 },
+      });
+    });
+    return () => {
+      active = false;
+      coveragePanelMapRef.current = null;
+      mini.remove();
+    };
+  }, [coveragePanelOpen]);
+
+  // Escape closes the coverage panel like the other map overlays.
+  useEffect(() => {
+    if (!coveragePanelOpen) return;
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') setCoveragePanelOpen(false);
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [coveragePanelOpen]);
 
   // Keep the canvas in sync with filtered data.
   useEffect(() => {
@@ -559,6 +854,22 @@ export function MapView({ views, onOpenLayers }: MapViewProps) {
       map.off('dragend', restoreStreetLabels);
     };
   }, [state.layers, state.layerOpacity, ready, basemapReady]);
+
+  // The outside mask and the repeated boundary label explain a partial view.
+  // They are switched together with the coverage view rather than with the
+  // ordinary layer drawer, because they describe where the map ends.
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map || !ready) return;
+    const maskVisible = basemapReady && coverageView === 'partial';
+    const labelsVisible = basemapReady && coverageView !== 'inside';
+    if (map.getLayer('outside-mask')) {
+      map.setLayoutProperty('outside-mask', 'visibility', maskVisible ? 'visible' : 'none');
+    }
+    if (map.getLayer('coverage-edge-label')) {
+      map.setLayoutProperty('coverage-edge-label', 'visibility', labelsVisible ? 'visible' : 'none');
+    }
+  }, [coverageView, basemapReady, ready]);
 
   // Building registry points. The full registry is fetched only when the layer
   // is switched on, then kept in memory and by the service worker.
@@ -821,6 +1132,21 @@ export function MapView({ views, onOpenLayers }: MapViewProps) {
 
     const handleClick = (event: maplibregl.MapMouseEvent) => {
       if (state.route.picking) return; // handled by a dedicated listener below
+      // The amber boundary is a thin line, and renderer feature queries can be
+      // empty while a freshly moved camera is still settling. Measure the tap
+      // against the projected boundary instead: the whole edge, including its
+      // glow and repeated label, becomes a usable target at any bearing or tilt.
+      const [coverageWest, coverageSouth, coverageEast, coverageNorth] = COVERAGE_BBOX;
+      const boundaryCorners = [
+        map.project([coverageWest, coverageSouth]),
+        map.project([coverageEast, coverageSouth]),
+        map.project([coverageEast, coverageNorth]),
+        map.project([coverageWest, coverageNorth]),
+      ];
+      const boundaryHit = boundaryCorners.some(
+        (corner, index) =>
+          distanceToSegment(event.point, corner, boundaryCorners[(index + 1) % boundaryCorners.length]) <= 10,
+      );
       const incidentLayers = [INCIDENT_LAYER.calls, INCIDENT_LAYER.cases311, 'maintenance-requests'].filter((id) => map.getLayer(id));
       const hits = map.queryRenderedFeatures(event.point, {
         layers: ['places-symbol', 'stops-dots', 'landmark-dots', 'building-registry-dots', 'msg-halo', 'msg-dot', ...incidentLayers].filter((id) =>
@@ -902,6 +1228,10 @@ export function MapView({ views, onOpenLayers }: MapViewProps) {
       if (buildingHit) {
         const id = String(buildingHit.properties?.id ?? '');
         if (id) actions.selectBuilding(id);
+        return;
+      }
+      if (boundaryHit) {
+        setCoveragePanelOpen(true);
         return;
       }
       const clusters = map.queryRenderedFeatures(event.point, { layers: ['cluster-halo'] });
@@ -1081,6 +1411,47 @@ export function MapView({ views, onOpenLayers }: MapViewProps) {
   const returnToCoverage = () => {
     const map = mapRef.current;
     if (!map) return;
+    const saved = lastCoveredCamera.current;
+    if (saved) {
+      // Restore the exact view that last showed mapped ground, including its
+      // zoom and the panel-aware padding it was framed with.
+      map.setPadding(saved.padding);
+      map.easeTo({
+        center: saved.center,
+        zoom: saved.zoom,
+        bearing: saved.bearing,
+        pitch: saved.pitch,
+        duration: 700,
+      });
+      return;
+    }
+    // No covered view has been recorded yet: land on the nearest point inside
+    // the extract at the current zoom instead of zooming out to the whole city.
+    const centre = map.getCenter();
+    const [west, south, east, north] = COVERAGE_BBOX;
+    map.easeTo({
+      center: [
+        Math.min(east, Math.max(west, centre.lng)),
+        Math.min(north, Math.max(south, centre.lat)),
+      ],
+      zoom: map.getZoom(),
+      duration: 700,
+    });
+  };
+
+  const retryBasemap = () => {
+    basemapReadyRef.current = false;
+    setBasemapReady(false);
+    setReady(false);
+    setBasemapFailure(null);
+    setCoveragePanelOpen(false);
+    setMapAttempt((attempt) => attempt + 1);
+  };
+
+  const showAllCoverage = () => {
+    const map = mapRef.current;
+    if (!map) return;
+    setCoveragePanelOpen(false);
     // A previous fly-to can leave camera padding taller than the phone's map
     // area, which makes fitBounds compute no camera at all. Start clean.
     map.setPadding({ top: 0, bottom: 0, left: 0, right: 0 });
@@ -1091,14 +1462,20 @@ export function MapView({ views, onOpenLayers }: MapViewProps) {
     });
   };
 
+  const basemapState: BasemapState = basemapReady ? 'ready' : basemapFailure ? 'failed' : 'loading';
+  const showCoverageNotice = basemapState === 'ready' && coverageView === 'outside';
+  const showCoverageEdge = basemapState === 'ready' && coverageView === 'partial';
+
   return (
     <div
-      className={`map-stage ${basemapReady ? 'has-minimap' : ''} ${noCoverageInView ? 'has-coverage-notice' : ''}`}
-      aria-busy={!basemapReady}
+      className={`map-stage ${basemapReady ? 'has-minimap' : ''} ${showCoverageNotice ? 'has-coverage-notice' : ''} ${coveragePanelOpen ? 'has-coverage-panel' : ''}`}
+      aria-busy={basemapState === 'loading'}
+      data-basemap-state={basemapState}
+      data-coverage-view={coverageView}
     >
       <div ref={containerRef} className="map-canvas" role="application" aria-label="Night Map of central San Francisco" />
 
-      {!basemapReady && !mapError && (
+      {basemapState === 'loading' && (
         <div className="map-loading" role="status" aria-live="polite">
           <div className="map-loading-card">
             <p className="map-loading-eyebrow">Night Map · San Francisco</p>
@@ -1125,11 +1502,23 @@ export function MapView({ views, onOpenLayers }: MapViewProps) {
         />
       )}
 
-      {mapError && (
-        <div className="map-failed" role="alert">
-          <h3>The map canvas could not start</h3>
-          <p>{mapError}</p>
-          <p>Search, placed lists and saved places still work. Try a browser with WebGL enabled.</p>
+      {basemapFailure && (
+        <div
+          className="map-failed"
+          role="alert"
+          data-testid="basemap-failure"
+          data-cause={basemapFailure.cause}
+        >
+          <div className="map-failed-card">
+            <p className="map-loading-eyebrow">Night Map · basemap unavailable</p>
+            <h3>{BASEMAP_FAILURE_COPY[basemapFailure.cause].title}</h3>
+            <p>{BASEMAP_FAILURE_COPY[basemapFailure.cause].body}</p>
+            <p className="map-failed-note">Search, placed lists, saved places and private notes still work.</p>
+            {basemapFailure.detail && <p className="map-failed-detail">{basemapFailure.detail}</p>}
+            <button type="button" className="button small" onClick={retryBasemap}>
+              Retry basemap
+            </button>
+          </div>
         </div>
       )}
 
@@ -1192,7 +1581,22 @@ export function MapView({ views, onOpenLayers }: MapViewProps) {
         )}
       </div>
 
-      {noCoverageInView && (
+      {showCoverageEdge && (
+        <button
+          type="button"
+          className={`coverage-edge-chip ${coveragePanelOpen ? 'is-open' : ''}`}
+          aria-haspopup="dialog"
+          aria-expanded={coveragePanelOpen}
+          onClick={() => setCoveragePanelOpen((open) => !open)}
+          data-testid="coverage-edge-chip"
+        >
+          <span className="coverage-edge-dash" aria-hidden="true" />
+          Edge of coverage
+          <span className="coverage-edge-more">Details</span>
+        </button>
+      )}
+
+      {showCoverageNotice && (
         <div className="coverage-notice" role="status" data-testid="coverage-notice">
           <span className="coverage-notice-mark" aria-hidden="true">
             <svg viewBox="0 0 24 24">
@@ -1206,16 +1610,133 @@ export function MapView({ views, onOpenLayers }: MapViewProps) {
               Central San Francisco only. Beyond the amber dashed boundary is intentionally unmapped.
             </span>
           </span>
-          <button
-            type="button"
-            className="button small"
-            aria-label="Return to coverage"
-            onClick={returnToCoverage}
-          >
-            <span className="coverage-return-full">Return to coverage</span>
-            <span className="coverage-return-compact">Return</span>
-          </button>
+          <div className="coverage-notice-actions">
+            <button
+              type="button"
+              className="button ghost small"
+              aria-label="Show all coverage"
+              title="Fit the whole central-San Francisco extract"
+              onClick={showAllCoverage}
+            >
+              <span className="coverage-all-full">Show all coverage</span>
+              <span className="coverage-all-compact">Show all</span>
+            </button>
+            <button
+              type="button"
+              className="button small"
+              aria-label="Return to coverage"
+              onClick={returnToCoverage}
+            >
+              <span className="coverage-return-full">Return to coverage</span>
+              <span className="coverage-return-compact">Return</span>
+            </button>
+          </div>
         </div>
+      )}
+
+      {coveragePanelOpen && (
+        <section
+          className="coverage-panel"
+          role="dialog"
+          aria-modal="false"
+          aria-labelledby="coverage-panel-title"
+          data-testid="coverage-panel"
+        >
+          <div className="coverage-panel-head">
+            <div>
+              <p className="eyebrow">Night Map · coverage</p>
+              <h3 id="coverage-panel-title">What the boundary means</h3>
+            </div>
+            <button
+              type="button"
+              className="icon-button close"
+              aria-label="Close coverage details"
+              onClick={() => setCoveragePanelOpen(false)}
+            >
+              ×
+            </button>
+          </div>
+
+          <div className="coverage-panel-map" data-testid="coverage-panel-minimap">
+            <div
+              ref={coveragePanelContainerRef}
+              className="coverage-panel-map-canvas"
+              role="img"
+              aria-label="Bundled central San Francisco extract with the current map view outlined"
+            />
+            <p className="coverage-panel-map-key">
+              <span className="coverage-key-extract" aria-hidden="true" /> bundled extract
+              <span className="coverage-key-view" aria-hidden="true" /> current view
+            </p>
+          </div>
+
+          <dl className="coverage-facts">
+            <div><dt>Places</dt><dd>{dataset.data.meta.counts.places}</dd></div>
+            <div><dt>Resource records</dt><dd>{dataset.data.meta.counts.resources}</dd></div>
+            <div><dt>Transit stops</dt><dd>{dataset.data.transit.length}</dd></div>
+            <div><dt>Cited sources</dt><dd>{dataset.data.sources.length}</dd></div>
+          </dl>
+
+          <section className="coverage-section">
+            <h4>Data dates</h4>
+            <dl className="coverage-rows">
+              <div><dt>Core extract built</dt><dd>{formatDate(dataset.data.meta.generatedAt)}</dd></div>
+              <div><dt>Sources retrieved</dt><dd>{SOURCE_RETRIEVED_RANGE}</dd></div>
+              <div>
+                <dt>Building records</dt>
+                <dd>newest {formatDate(buildingRegistryMeta.newestRecordAt)} · compiled {formatDate(buildingRegistryMeta.generatedAt)}</dd>
+              </div>
+            </dl>
+          </section>
+
+          <section className="coverage-section">
+            <h4>Layer and zoom limits</h4>
+            <ul className="coverage-list">
+              <li>
+                <strong>Zoom z{MAP_MIN_ZOOM}–{MAP_MAX_ZOOM}.</strong> Tilt up to {MAX_PITCH}°; the camera cannot zoom
+                beyond that range.
+              </li>
+              <li>
+                <strong>Basemap layers.</strong> Streets, paths, parks, water, coastline, rail and landmarks draw
+                throughout. 3D buildings start at z{BUILDINGS_MIN_ZOOM}; stop names at z16.8.
+              </li>
+              <li>
+                <strong>Optional layers.</strong> Satellite, terrain, transit, reported activity and building records
+                stay inside the same boundary.
+              </li>
+            </ul>
+          </section>
+
+          <section className="coverage-section">
+            <h4>What is excluded</h4>
+            <ul className="coverage-list">
+              <li>
+                <strong>Not citywide or complete.</strong> {dataset.data.meta.footprint.note} An empty category means
+                no installed record, not that nothing exists.
+              </li>
+              <li>
+                <strong>No live availability.</strong> A listed facility may be closed, unstocked or inaccessible;
+                inventory presence is not a field check.
+              </li>
+              <li>
+                <strong>Person-targeting reports are excluded.</strong> Encampment, welfare, medical and crisis
+                categories, narratives and exact addresses are removed; positions are coarse.
+              </li>
+              <li>
+                <strong>Nothing beyond the amber line.</strong> The basemap and records stop at the boundary by design.
+              </li>
+            </ul>
+          </section>
+
+          <div className="coverage-panel-actions">
+            <button type="button" className="button small" onClick={showAllCoverage}>
+              Show all coverage
+            </button>
+            <button type="button" className="button ghost small" onClick={() => setCoveragePanelOpen(false)}>
+              Close
+            </button>
+          </div>
+        </section>
       )}
 
       <div className="map-controls" aria-label="Map controls">

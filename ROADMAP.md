@@ -66,8 +66,8 @@ Sources: the project requirements, the working tree, and
   the minimap fills its frame and shows the whole city, and the mobile sheet has
   contained scrolling instead of covering the map.
 - [x] **Verification.** Typecheck, 165 unit tests across 26 files, and the
-  production build pass in the working tree. The Playwright suite contains 21
-  acceptance scenarios across 6 specs (desktop, mobile, 3D, incidents, offline and
+  production build pass in the working tree. The Playwright suite contains 47
+  tests across 7 specs (desktop, mobile, coverage, 3D, incidents, offline and
   verification).
 
 ## Partial

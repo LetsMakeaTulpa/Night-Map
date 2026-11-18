@@ -35,7 +35,7 @@ exercise offline behavior.
 ```bash
 npm test             # 165 unit tests across 26 files (hours, status, verification, cost/friction and disclosure rules, terrain/building and incident rules, building-registry rules, routing, selectors, presence/messages, data)
 npx playwright install chromium
-npx playwright test  # 21 acceptance scenarios across 6 specs (desktop + mobile)
+npx playwright test  # 47 tests across 7 specs (desktop + mobile)
 ```
 
 The offline scenario runs against a real service worker and is skipped unless a
