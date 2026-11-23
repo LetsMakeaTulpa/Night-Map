@@ -32,16 +32,32 @@ export interface ApertureOverlay {
   edge: OverlayEdge;
 }
 
+export interface ApertureMeasurement {
+  /** The unobstructed map area, or null when no map pixel is visible. */
+  aperture: Aperture | null;
+  /**
+   * The canvas or the overlays leave no visible map at all. This is a layout
+   * state, not an assertion that the camera is beyond the data boundary.
+   */
+  fullyHidden: boolean;
+}
+
 /**
  * Shrink the canvas by the overlays docked to its edges. Each overlay is
  * classified by the edge it belongs to rather than by its shape: a centred
  * bottom dock and a full-height side panel are both rectangles, but they hide
  * map from different edges.
  */
-export function visibleAperture(canvas: Box, overlays: readonly ApertureOverlay[]): Aperture | null {
+export function visibleAperture(
+  canvas: Box,
+  overlays: readonly ApertureOverlay[],
+): ApertureMeasurement {
   const width = canvas.right - canvas.left;
   const height = canvas.bottom - canvas.top;
-  if (width <= 0 || height <= 0) return null;
+  // A zero-area canvas is fully hidden too: on a phone an expanded sheet can
+  // take the whole map column, even though the sheet does not geometrically
+  // overlap the canvas. Either way there is no map to describe.
+  if (width <= 0 || height <= 0) return { aperture: null, fullyHidden: true };
 
   let left = 0;
   let top = 0;
@@ -63,10 +79,10 @@ export function visibleAperture(canvas: Box, overlays: readonly ApertureOverlay[
     else bottom = Math.min(bottom, box.top - canvas.top);
   }
 
-  // Fully covered: there is no visible map left to describe, so let the caller
-  // fall back to the whole canvas rather than inventing a zero-size view.
-  if (right - left < 1 || bottom - top < 1) return null;
-  return { left, top, right, bottom };
+  if (right - left < 1 || bottom - top < 1) {
+    return { aperture: null, fullyHidden: true };
+  }
+  return { aperture: { left, top, right, bottom }, fullyHidden: false };
 }
 
 function insideBbox([lng, lat]: LonLat, bbox: CoverageBbox) {
@@ -140,6 +156,9 @@ export function apertureShowsCoverage(corners: readonly LonLat[], bbox: Coverage
 }
 
 export type CoverageView = 'outside' | 'partial' | 'inside';
+
+/** Adds the layout state where no map pixel is visible at all. */
+export type CoverageViewState = CoverageView | 'hidden';
 
 /**
  * A bounded extract inside a convex rectangle is covered completely when all

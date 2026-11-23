@@ -55,7 +55,7 @@ export const LAYERS: (LayerDefinition & { defaultOpacity?: number })[] = [
     id: 'terrain',
     name: 'Terrain shading',
     description:
-      'Public-domain elevation model at about 7 m per pixel, rendered at true vertical scale (×1, no exaggeration). It shows broad hills and slopes, not kerbs, stairs or walkable grades.',
+      'Public-domain elevation model at about 7 m per pixel, rendered at true vertical scale (×1, no exaggeration). Shading switches to a coarser 14 m sample in steeply tilted views so the wider ground costs a handful of tiles. It shows broad hills and slopes, not kerbs, stairs or walkable grades.',
     group: 'base',
     sourceIds: ['src:aws-terrain-tiles'],
     defaultVisible: false,

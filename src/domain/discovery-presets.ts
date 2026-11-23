@@ -2,18 +2,31 @@ import type { CategoryId, Filters } from './types';
 
 export type QuickViewId = 'essentials' | 'after-dark' | 'connections' | 'scenes';
 
+/** Stable order for the chip row; counts and labels are keyed off the same ids. */
+export const QUICK_VIEW_IDS: readonly QuickViewId[] = [
+  'essentials',
+  'after-dark',
+  'connections',
+  'scenes',
+];
+
 /**
  * Quick views are curated filter states, not assertions about access, hours,
  * safety or current availability. Keep their definitions in one place so the
  * button state and applied filters cannot drift apart.
  */
-export const QUICK_VIEWS: Record<QuickViewId, { categories: CategoryId[]; afterDark?: boolean }> = {
+export const QUICK_VIEWS: Record<
+  QuickViewId,
+  { label: string; categories: CategoryId[]; afterDark?: boolean }
+> = {
   essentials: {
+    label: 'Essentials',
     categories: ['food', 'water', 'bathroom', 'shelter', 'services', 'medical', 'transit', 'civic'],
   },
-  'after-dark': { categories: ['popos'], afterDark: true },
-  connections: { categories: ['transit', 'pedestrian_connection'] },
+  'after-dark': { label: 'After-dark POPOS', categories: ['popos'], afterDark: true },
+  connections: { label: 'Transit & connections', categories: ['transit', 'pedestrian_connection'] },
   scenes: {
+    label: 'Scenes & hideaways',
     categories: [
       'popos', 'hangout', 'abandoned', 'passage', 'mutual_aid', 'food',
       'bathroom', 'water', 'civic', 'nightlife', 'counterculture',

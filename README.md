@@ -154,13 +154,16 @@ simplification or the height rules needs no network.
 - Atlas workspace with three source-backed neighbourhood guides and a history
   layer that stays visually subordinate to navigation.
 - **Terrain and a 3D view.** Relief shading and terrain displacement from a public-domain
-  elevation model (35 tiles at about 7 m per pixel), rendered at true vertical scale (×1),
+  elevation model (35 tiles at about 7 m per pixel; shading drops to a 14 m sample past 50°
+  of tilt so a wide pitched view costs a handful of tiles rather than four times as many),
+  rendered at true vertical scale (×1),
   and **13,975 extruded OpenStreetMap building footprints**. 9,996 carry a height tag,
   812 give storey counts, and 3,167 are estimates from footprint type; estimates are stated
   explicitly rather than presented as measured heights.
 - **A camera that is not stuck overhead.** Two-finger drag or control-drag tilts and turns
-  the map (up to 78°); the 3D control enables terrain and buildings, and the compass returns
-  to north. Building extrusion collapses to a flat footprint in plan view.
+  the map (up to 78°), and on-screen **Tilt up** / **Tilt down** buttons step the angle by 10°
+  at a time; the 3D control enables terrain and buildings, and the compass returns to north.
+  Building extrusion collapses to a flat footprint in plan view.
 - **Satellite imagery, independently switchable.** Esri World Imagery sits beneath Night
   Map's road labels, markers and routes. Aerial capture dates and resolution vary by
   location; the imagery layer requires a network connection.

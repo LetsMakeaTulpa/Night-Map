@@ -15,6 +15,20 @@ const TERRAIN_BBOX = terrainMeta.bbox as [number, number, number, number];
 /** The installed places' footprint. Beyond this boundary the basemap is intentionally absent. */
 export const COVERAGE_BBOX = meta.footprint.bbox as [number, number, number, number];
 
+/**
+ * A steeply pitched view covers kilometres of ground. The coarse shading source
+ * exists so that view can be shaded from a handful of tiles instead of the four
+ * times larger set of fine ones; MapView toggles between the two layers.
+ */
+const COARSE_SHADE_MAXZOOM = 13;
+
+const HILLSHADE_PAINT = {
+  'hillshade-exaggeration': 0.32,
+  'hillshade-shadow-color': '#04080A',
+  'hillshade-highlight-color': '#415158',
+  'hillshade-accent-color': '#101A1F',
+};
+
 export const THEME = {
   land: '#0D1317',
   water: '#061528',
@@ -182,6 +196,17 @@ export function buildStyle(): StyleSpecification {
         maxzoom: terrainMeta.maxzoom,
         bounds: [TERRAIN_BBOX[1], TERRAIN_BBOX[0], TERRAIN_BBOX[3], TERRAIN_BBOX[2]],
       },
+      // The 3D terrain mesh in a steeply pitched view uses a coarser source for
+      // the same reason as the shade below: MapView swaps to it past 50° of tilt.
+      terrainCoarse: {
+        type: 'raster-dem',
+        tiles: [terrainMeta.urlTemplate],
+        tileSize: terrainMeta.tileSize,
+        encoding: 'terrarium',
+        minzoom: terrainMeta.minzoom,
+        maxzoom: COARSE_SHADE_MAXZOOM,
+        bounds: [TERRAIN_BBOX[1], TERRAIN_BBOX[0], TERRAIN_BBOX[3], TERRAIN_BBOX[2]],
+      },
       // MapLibre warns that one DEM source cannot serve both terrain and a
       // hillshade without costing quality, so the shading reads from its own
       // source over the same tiles — the browser fetches them once.
@@ -192,6 +217,18 @@ export function buildStyle(): StyleSpecification {
         encoding: 'terrarium',
         minzoom: terrainMeta.minzoom,
         maxzoom: terrainMeta.maxzoom,
+        bounds: [TERRAIN_BBOX[1], TERRAIN_BBOX[0], TERRAIN_BBOX[3], TERRAIN_BBOX[2]],
+      },
+      // The tile-budget twin of the shading source. Same elevation data, read at
+      // z13: each tile covers four times the ground, so a pitched view that
+      // spans the whole extract costs ~5 tiles instead of ~13.
+      terrainShadeCoarse: {
+        type: 'raster-dem',
+        tiles: [terrainMeta.urlTemplate],
+        tileSize: terrainMeta.tileSize,
+        encoding: 'terrarium',
+        minzoom: terrainMeta.minzoom,
+        maxzoom: COARSE_SHADE_MAXZOOM,
         bounds: [TERRAIN_BBOX[1], TERRAIN_BBOX[0], TERRAIN_BBOX[3], TERRAIN_BBOX[2]],
       },
       buildings: { type: 'geojson', data: empty },
@@ -216,12 +253,16 @@ export function buildStyle(): StyleSpecification {
         type: 'hillshade',
         source: 'terrainShade',
         layout: { visibility: 'none' },
-        paint: {
-          'hillshade-exaggeration': 0.32,
-          'hillshade-shadow-color': '#04080A',
-          'hillshade-highlight-color': '#415158',
-          'hillshade-accent-color': '#101A1F',
-        },
+        paint: HILLSHADE_PAINT,
+      },
+      {
+        // MapView shows this one above its coarse-shading pitch and hides the
+        // fine layer, so only one DEM tile set is requested at a time.
+        id: 'hillshade-coarse',
+        type: 'hillshade',
+        source: 'terrainShadeCoarse',
+        layout: { visibility: 'none' },
+        paint: HILLSHADE_PAINT,
       },
       {
         id: 'green-fill',
@@ -872,6 +913,32 @@ export function buildStyle(): StyleSpecification {
           'circle-color': '#0D1317',
           'circle-stroke-color': THEME.accent,
           'circle-stroke-width': 2,
+        },
+      },
+      {
+        // A plotted search result is not a place record, so it carries its own
+        // label. The note says when the pin is the nearest covered point rather
+        // than the result itself.
+        id: 'external-label',
+        type: 'symbol',
+        source: 'external',
+        layout: {
+          'text-field': [
+            'case',
+            ['==', ['get', 'note'], ''],
+            ['get', 'label'],
+            ['concat', ['get', 'label'], ' · ', ['get', 'note']],
+          ],
+          'text-font': FONT,
+          'text-size': 11,
+          'text-offset': [0, 1.1],
+          'text-anchor': 'top',
+          'text-max-width': 9,
+        },
+        paint: {
+          'text-color': '#F0C674',
+          'text-halo-color': THEME.halo,
+          'text-halo-width': 1.5,
         },
       },
     ],

@@ -628,6 +628,20 @@ body.is-resizing {
   margin-top: 4px;
 }
 
+.map-failed-card .button-row .button {
+  margin-top: 0;
+}
+
+.map-failed-card .map-failed-distance {
+  color: var(--accent);
+  font-variant-numeric: tabular-nums;
+}
+
+.map-failed-card .map-failed-distance strong {
+  color: var(--text);
+  font-weight: 600;
+}
+
 .map-topline {
   position: absolute;
   top: 10px;
@@ -664,6 +678,18 @@ body.is-resizing {
 .map-scale-note.is-warn {
   color: #e8b9a0;
   border-color: rgba(232, 185, 160, 0.45);
+}
+
+.map-view-action {
+  pointer-events: auto;
+  cursor: pointer;
+  color: var(--accent);
+  border-color: rgba(224, 164, 88, 0.45);
+  font-family: inherit;
+}
+
+.map-view-action:hover {
+  background: rgba(224, 164, 88, 0.14);
 }
 
 .picking-chip {
@@ -707,11 +733,15 @@ body.is-resizing {
 }
 
 .map-control {
-  width: 38px;
-  height: 38px;
+  width: 48px;
+  height: 48px;
   display: inline-grid;
   place-items: center;
-  border-radius: 9px;
+  /* Rapid presses of Tilt up / Tilt down must register as presses, never as a
+     double-tap zoom or a text selection. */
+  touch-action: manipulation;
+  user-select: none;
+  border-radius: 11px;
   border: var(--border-w) solid var(--line);
   background: rgba(16, 24, 30, 0.94);
   color: var(--text-2);
@@ -726,9 +756,19 @@ body.is-resizing {
   border-color: #3d4f58;
 }
 
+.map-control:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.map-control:disabled:hover {
+  color: var(--text-2);
+  border-color: var(--line);
+}
+
 .map-control svg {
-  width: 18px;
-  height: 18px;
+  width: 22px;
+  height: 22px;
   fill: none;
   stroke: currentColor;
   stroke-width: 1.7;
@@ -799,7 +839,7 @@ body.is-resizing {
 .legend {
   position: absolute;
   top: 52px;
-  right: 58px;
+  right: 72px;
   z-index: 6;
   width: 272px;
   max-height: calc(100% - 120px);
@@ -1423,13 +1463,6 @@ body.is-resizing {
   padding: 12px 14px 22px;
 }
 
-.app-desktop .map-topline {
-  top: 84px;
-}
-
-.app-desktop.has-panel .map-topline {
-  left: 404px;
-}
 
 .app-desktop .map-controls {
   top: 84px;
@@ -1501,6 +1534,86 @@ body.is-resizing {
   display: none;
 }
 
+/* A zero-area map column or a canvas fully covered by panels is a layout
+   state, not a coverage boundary. */
+.map-hidden-notice {
+  position: fixed;
+  top: 50%;
+  left: 50%;
+  z-index: 100;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  gap: 10px;
+  row-gap: 8px;
+  width: min(380px, calc(100vw - 40px));
+  padding: 14px 16px;
+  transform: translate(-50%, -50%);
+  border: var(--border-w) solid var(--line);
+  border-radius: var(--radius-lg);
+  background: rgba(11, 19, 16, 0.99);
+  box-shadow: var(--shadow);
+  /* Status, not a modal: the sheet or panel behind it stays fully usable. */
+  pointer-events: none;
+}
+
+.map-hidden-actions {
+  flex: 1 0 100%;
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 6px;
+}
+
+.map-hidden-actions .button {
+  pointer-events: auto;
+}
+
+/* The overview still draws a third-party basemap; hide it when the main map
+   has no layers, so the empty state is not contradicted by a busy inset. */
+.map-stage.has-empty-layers .mini-map-widget {
+  display: none;
+}
+
+.map-hidden-mark {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 30px;
+  height: 30px;
+  border-radius: 8px;
+  background: var(--panel-2);
+  color: var(--text-2);
+}
+
+.map-hidden-mark svg {
+  width: 19px;
+  height: 19px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.6;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.map-hidden-copy {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+
+.map-hidden-copy strong {
+  color: var(--text);
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.map-hidden-copy span {
+  color: var(--muted);
+  font-size: 11.5px;
+  line-height: 1.45;
+}
+
 /* Shown only after the map centre crosses the installed extract boundary. */
 .coverage-notice {
   position: absolute;
@@ -1556,6 +1669,19 @@ body.is-resizing {
   font-size: 11.5px;
   line-height: 1.35;
   color: var(--muted);
+}
+
+.coverage-notice-copy .coverage-notice-distance {
+  margin-top: 1px;
+  color: var(--accent);
+  font-size: 10.5px;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0.02em;
+}
+
+.coverage-notice-distance strong {
+  color: var(--text);
+  font-weight: 600;
 }
 
 .coverage-notice .button {
@@ -1782,7 +1908,7 @@ body.is-resizing {
 .app-desktop .coverage-notice {
   top: 164px;
   left: 76px;
-  right: 62px;
+  right: 74px;
   width: auto;
   max-width: 560px;
   margin-inline: auto;
@@ -1794,12 +1920,11 @@ body.is-resizing {
 }
 
 .app-desktop.has-inspector .coverage-notice {
-  right: 506px;
+  right: 518px;
 }
 
 /* On a phone the dock, attribution and minimap leave no room for a full card.
-   The notice becomes a compact bar below the top line, and the minimap is
-   hidden only while it is up. */
+   The notice becomes a compact bar below the top line. */
 .app-mobile .coverage-notice {
   top: 58px;
   bottom: auto;
@@ -1807,10 +1932,18 @@ body.is-resizing {
   right: 12px;
   width: auto;
   transform: none;
+  flex-wrap: wrap;
+  row-gap: 8px;
   padding: 8px 10px 8px 12px;
 }
 
-.app-mobile .coverage-notice-copy span {
+/* Three actions no longer share the row with the title on a phone. Give them
+   their own line rather than squeezing the message into a column. */
+.app-mobile .coverage-notice-actions {
+  flex: 1 0 100%;
+}
+
+.app-mobile .coverage-notice-copy .coverage-notice-body {
   display: none;
 }
 
@@ -1830,8 +1963,22 @@ body.is-resizing {
   display: inline;
 }
 
+/* Keep the overview above the outside notice on typical phones: its extract
+   footprint is the orientation aid when the amber boundary is off-screen.
+   Short or landscape phones still hide it so the notice and sheet do not
+   collide. */
 .app-mobile .map-stage.has-coverage-notice .mini-map-widget {
   display: none;
+}
+
+@media (min-width: 380px) and (min-height: 700px) {
+  .app-mobile .map-stage.has-coverage-notice .mini-map-widget {
+    display: block;
+  }
+
+  .app-mobile .map-stage.has-coverage-notice .coverage-notice {
+    top: 158px;
+  }
 }
 
 /* Two open panels leave roughly (100vw - 974px) between them. Below about
@@ -1846,14 +1993,20 @@ body.is-resizing {
     width: auto;
     max-width: 340px;
     margin: 0;
+    flex-wrap: wrap;
+    row-gap: 8px;
     padding: 8px 10px 8px 12px;
+  }
+
+  .app-desktop.has-panel.has-inspector .coverage-notice-actions {
+    flex-basis: 100%;
   }
 
   .app-desktop.has-panel.has-inspector .coverage-notice-copy strong {
     font-size: 12px;
   }
 
-  .app-desktop.has-panel.has-inspector .coverage-notice-copy span {
+  .app-desktop.has-panel.has-inspector .coverage-notice-copy .coverage-notice-body {
     display: none;
   }
 
@@ -1920,14 +2073,14 @@ body.is-resizing {
   position: relative;
   display: grid;
   justify-items: center;
-  gap: 3px;
-  min-width: 62px;
-  padding: 6px 7px;
+  gap: 4px;
+  min-width: 76px;
+  padding: 9px 10px;
   border: none;
-  border-radius: 9px;
+  border-radius: 10px;
   background: none;
   color: var(--muted);
-  font-size: 10px;
+  font-size: 11px;
   letter-spacing: 0.02em;
   white-space: nowrap;
 }
@@ -1949,8 +2102,8 @@ body.is-resizing {
 }
 
 .bottom-bar .path-icon {
-  width: 19px;
-  height: 19px;
+  width: 23px;
+  height: 23px;
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -2072,6 +2225,7 @@ body.is-resizing {
     display: none;
   }
 
+
   .app-mobile .map-scale-note {
     padding: 3px 7px;
     font-size: 10px;
@@ -2104,8 +2258,8 @@ body.is-resizing {
   position: relative;
   display: grid;
   justify-items: center;
-  gap: 3px;
-  padding: 7px 2px;
+  gap: 4px;
+  padding: 9px 2px;
   border: none;
   border-radius: 9px;
   background: none;
@@ -2122,8 +2276,8 @@ body.is-resizing {
 
 .mobile-nav button .path-icon,
 .mobile-nav button svg {
-  width: 19px;
-  height: 19px;
+  width: 22px;
+  height: 22px;
 }
 
 .mobile-nav .nav-badge {
@@ -2173,9 +2327,6 @@ body.is-resizing {
   text-shadow: 0 1px 3px #000;
 }
 
-.map-stage.has-minimap .map-controls {
-  top: 152px;
-}
 
 .app-desktop .minimap {
   top: 84px;
@@ -2211,32 +2362,37 @@ body.is-resizing {
 .rail-mark {
   display: grid;
   place-items: center;
-  width: 38px;
-  height: 34px;
+  width: 44px;
+  height: 38px;
   margin-bottom: 3px;
   border-bottom: var(--border-w-soft) solid var(--line-soft);
 }
 
 .rail-mark .brand-mark {
-  width: 22px;
-  height: 22px;
+  width: 24px;
+  height: 24px;
 }
 
 .rail-button {
-  width: 42px;
-  min-height: 40px;
+  width: 46px;
+  min-height: 44px;
   display: grid;
   place-items: center;
   gap: 1px;
-  padding: 4px 2px;
+  padding: 5px 2px;
   border: none;
-  border-radius: 9px;
+  border-radius: 10px;
   background: none;
   color: var(--muted);
 }
 
+.rail-button .path-icon {
+  width: 22px;
+  height: 22px;
+}
+
 .rail-button span {
-  font-size: 8.5px;
+  font-size: 9.5px;
   letter-spacing: 0.02em;
   line-height: 1.2;
 }
@@ -3319,6 +3475,18 @@ body.is-resizing {
   line-height: 1.1;
 }
 
+.nearby-view-count {
+  display: inline-block;
+  margin-left: 7px;
+  color: var(--faint);
+  font-family: var(--font-sans);
+  font-size: 10px;
+  font-weight: 500;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  vertical-align: middle;
+}
+
 .nearby-head-tools {
   display: flex;
   align-items: center;
@@ -3371,6 +3539,42 @@ body.is-resizing {
   padding: 8px 0;
   border-top: var(--border-w-soft) solid var(--line-soft);
   border-bottom: var(--border-w-soft) solid var(--line-soft);
+}
+
+.filter-preset-icon {
+  font-size: 12px;
+  line-height: 1;
+}
+
+.filter-view-status {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 3px 8px;
+  padding: 6px 8px;
+  border: var(--border-w-soft) solid var(--line-soft);
+  border-left: 2px solid var(--line);
+  border-radius: 4px;
+  color: var(--muted);
+  font-size: 10.5px;
+  line-height: 1.4;
+}
+
+.filter-view-status strong {
+  color: var(--text-2);
+  font-weight: 600;
+}
+
+.filter-view-status.is-outside,
+.filter-view-status.is-empty-view {
+  border-left-color: var(--accent);
+}
+
+.filter-view-status .link-button {
+  padding: 0;
+  color: var(--accent);
+  font-size: 10.5px;
+  white-space: nowrap;
 }
 
 .filter-chips {
@@ -3672,6 +3876,17 @@ body.is-resizing {
   color: var(--blue);
 }
 
+/* A record or route point beyond the installed extract. Dashed to echo the
+   amber boundary rather than looking like a service-status tag. */
+.tag.outside {
+  border-color: rgba(240, 198, 116, 0.5);
+  border-style: dashed;
+  background: rgba(224, 164, 88, 0.08);
+  color: #f0c674;
+  font-weight: 600;
+  letter-spacing: 0.03em;
+}
+
 /* ---------------------------------------------------- mobile map chrome */
 
 .app-mobile .minimap {
@@ -3683,6 +3898,8 @@ body.is-resizing {
 .app-mobile .map-topline {
   right: 12px;
   gap: 6px;
+  flex-wrap: wrap;
+  max-width: calc(100% - 24px);
 }
 
 .app-mobile .minimap-label {
@@ -3691,24 +3908,25 @@ body.is-resizing {
   font-size: 8px;
 }
 
-/* A single horizontal dock keeps every control reachable above the sheet,
-   instead of a vertical stack that disappears behind it. */
+/* On a phone the controls run up the right edge as a column, starting just
+   above the attribution line so the sheet and credits stay uncovered. */
 .app-mobile .map-stage .map-controls {
   top: auto;
-  right: 12px;
-  bottom: 12px;
-  left: 12px;
-  flex-direction: row;
-  align-items: center;
-  gap: 2px;
-  padding: 4px;
-  overflow-x: auto;
-  overflow-y: hidden;
-  border: var(--border-w) solid var(--line);
-  border-radius: 12px;
-  background: rgba(11, 19, 16, 0.94);
-  backdrop-filter: blur(10px);
-  box-shadow: var(--shadow);
+  right: 8px;
+  bottom: 116px;
+  left: auto;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 5px;
+  max-height: calc(100% - 132px);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding: 0;
+  border: none;
+  border-radius: 0;
+  background: none;
+  backdrop-filter: none;
+  box-shadow: none;
   scrollbar-width: none;
 }
 
@@ -3716,22 +3934,70 @@ body.is-resizing {
   display: none;
 }
 
+
 .app-mobile .map-control {
-  width: 34px;
-  height: 34px;
+  width: 36px;
+  height: 36px;
   flex: none;
-  border-radius: 8px;
+  border-radius: 9px;
 }
 
 .app-mobile .map-control svg {
-  width: 16px;
-  height: 16px;
+  width: 18px;
+  height: 18px;
 }
 
 .app-mobile .map-control-group {
   flex: none;
-  flex-direction: row;
-  gap: 2px;
+  flex-direction: column;
+  gap: 5px;
+}
+
+/* Short phones cannot fit eleven controls above the sheet as one column: the
+   lower ones would be clipped inside a scroll box with no visible scrollbar.
+   Two short rows keep every control on screen and in reach. */
+@media (max-height: 720px) {
+  .app-mobile .map-stage .map-controls {
+    top: 62px;
+    right: 8px;
+    bottom: auto;
+    flex-direction: row;
+    flex-wrap: wrap;
+    justify-content: flex-end;
+    align-content: flex-start;
+    /* Six 36 px targets plus their 3 px gaps: a raised touch floor still fits
+       the cluster in two rows rather than growing it downward. */
+    max-width: 231px;
+    max-height: none;
+    overflow: visible;
+    gap: 3px;
+  }
+
+  /* The two-row cluster is wider than the old column, so it starts under the
+     overview map instead of beside it. */
+  .app-mobile .map-stage.has-minimap .map-controls {
+    top: 116px;
+  }
+
+  .app-mobile .map-control {
+    width: 36px;
+    height: 36px;
+    border-radius: 9px;
+  }
+
+  .app-mobile .map-control-group {
+    flex-direction: row;
+    gap: 3px;
+  }
+
+  .app-mobile .map-control svg {
+    width: 16px;
+    height: 16px;
+  }
+
+  .app-mobile .map-control-group {
+    gap: 3px;
+  }
 }
 
 .app-mobile .map-recenter,
@@ -4258,6 +4524,126 @@ body.is-resizing {
   color: var(--text);
 }
 
+/* An outside-coverage result never moves the camera. This card replaces the
+   result list so the alternative is visible before anything happens. */
+.searchbar > .search-outside {
+  position: absolute;
+  z-index: 45;
+  top: calc(100% + 6px);
+  left: 0;
+  right: 0;
+  max-height: min(65vh, 420px);
+  overflow-y: auto;
+  padding: 12px;
+  border: var(--border-w) solid rgba(240, 198, 116, 0.5);
+  border-radius: 11px;
+  background: rgba(11, 19, 16, 0.99);
+  box-shadow: var(--shadow);
+}
+
+.search-outside-eyebrow {
+  margin: 0 0 4px;
+  color: var(--accent);
+  font-size: 9.5px;
+  font-weight: 600;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+}
+
+.search-outside h3 {
+  margin: 0 0 7px;
+  font-family: var(--font-display);
+  font-size: 19px;
+  font-weight: 500;
+  line-height: 1.15;
+}
+
+.search-outside p {
+  margin: 0 0 8px;
+  color: var(--text-2);
+  font-size: 11.5px;
+  line-height: 1.5;
+}
+
+.search-outside .search-outside-nearest {
+  color: var(--text);
+}
+
+.search-outside-nearest strong {
+  color: var(--accent);
+}
+
+.search-outside-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 10px;
+}
+
+.hit-outside {
+  display: inline-flex;
+  align-items: center;
+  width: fit-content;
+  margin-top: 4px;
+  padding: 1px 6px;
+  border: 1px dashed rgba(240, 198, 116, 0.5);
+  border-radius: 999px;
+  color: #f0c674;
+  font-size: 9px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+/* Inline confirmation shown instead of contacting the routing provider when a
+   stop or start lies beyond the bundled extract. */
+.route-outside-warning {
+  display: grid;
+  gap: 5px;
+  margin-top: 9px;
+  padding: 10px 11px;
+  border: var(--border-w) solid rgba(240, 198, 116, 0.5);
+  border-left: 3px solid var(--accent);
+  border-radius: 10px;
+  background: rgba(26, 34, 25, 0.97);
+}
+
+.route-outside-warning h3 {
+  margin: 0;
+  font-size: 13.5px;
+  font-weight: 600;
+}
+
+.route-outside-warning p {
+  margin: 0;
+  color: var(--text-2);
+  font-size: 11.5px;
+  line-height: 1.5;
+}
+
+.route-outside-points {
+  display: grid;
+  gap: 3px;
+  margin: 2px 0 0;
+  padding-left: 16px;
+  color: var(--text-2);
+  font-size: 11.5px;
+  line-height: 1.45;
+}
+
+.route-outside-points li::marker {
+  color: var(--accent);
+}
+
+.route-outside-points strong {
+  color: var(--text);
+  font-weight: 600;
+}
+
+.route-outside-warning .button-row {
+  margin-top: 4px;
+}
+
 /* The canvas starts painting tiles before the road source arrives. Cover it
    until the grid is actually there, so the first thing seen is a street map
    rather than a field of place dots over an empty background. */
@@ -4465,4 +4851,112 @@ body.is-resizing {
   margin: 0;
   font-size: 11px;
   color: var(--muted);
+}
+
+/* The record-count chips and the overview map both want the top-right corner.
+   Once an open panel narrows the map the chips would run underneath the
+   overview, so they step aside: they summarise what the panel already lists. */
+@media (max-width: 1160px) {
+  .app-desktop.has-inspector .map-topline {
+    display: none;
+  }
+}
+
+@media (max-width: 1560px) {
+  .app-desktop.has-panel.has-inspector .map-topline {
+    display: none;
+  }
+}
+
+/* A flyout pushes the chips further right still, so they need more width to
+   clear the overview. */
+@media (max-width: 1620px) {
+  .app-desktop.has-flyout.has-inspector .map-topline {
+    display: none;
+  }
+}
+
+/* Centred on the whole window, the map-tools bar slides under the open detail
+   panel below about 1290px. Centre it on the map the reader can actually see. */
+.app-desktop.has-inspector:not(.has-panel) .bottom-bar {
+  left: calc(50% - 186px);
+}
+
+.app-desktop.has-panel.has-inspector .bottom-bar {
+  left: calc(50% + 6px);
+}
+
+/* With both panels open the middle of the map is only ~380px at this width,
+   so the bar steps its padding down rather than sitting on a panel edge. */
+@media (max-width: 1300px) {
+  .app-desktop.has-panel.has-inspector .bottom-bar button {
+    min-width: 68px;
+    padding: 9px 6px;
+  }
+}
+
+/* Short desktop windows cannot fit the full column under the overview map.
+   The full-size column needs about 850px of window height to clear the
+   map-tools bar, so it steps down sooner than the old 760px breakpoint.
+   The overview gets a shorter frame to match rather than being crowded.
+   These live at the end of the file so they beat the later map chrome rules. */
+@media (max-height: 860px) {
+  .app-desktop .map-control {
+    width: 40px;
+    height: 40px;
+  }
+
+  .app-desktop .map-control svg {
+    width: 19px;
+    height: 19px;
+  }
+
+  .app-desktop .mini-map-canvas {
+    height: 88px;
+  }
+
+  .app-desktop .map-stage.has-minimap .map-controls {
+    top: 139px;
+  }
+
+  .app-desktop .map-controls,
+  .app-desktop .map-control-group {
+    gap: 3px;
+  }
+}
+
+/* The enlarged rail is 576px tall with labels. Very short windows cannot hold
+   it without an invisible scroll, so it drops to icons only, as it already
+   does on narrow desktops. */
+@media (max-height: 680px) {
+  .app-desktop .rail-button span {
+    display: none;
+  }
+
+  .app-desktop .rail-button {
+    width: 40px;
+    min-height: 38px;
+  }
+
+  .app-desktop .side-rail {
+    gap: 2px;
+  }
+}
+
+/* Below this the column plus the overview no longer fit above the bar at any
+   button size worth tapping. The overview yields: zoom, layers and the camera
+   controls are the ones a reader needs, and the map itself shows the place. */
+@media (max-height: 720px) {
+  .app-desktop .mini-map-widget {
+    display: none;
+  }
+
+  .app-desktop .map-stage.has-minimap .map-controls {
+    top: 84px;
+  }
+
+  .app-desktop .map-controls,
+  .app-desktop .map-control-group {
+    gap: 2px;
+  }
 }

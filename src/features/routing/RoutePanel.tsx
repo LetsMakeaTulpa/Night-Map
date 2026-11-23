@@ -1,9 +1,11 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { dataset } from '../../data';
 import { useStore } from '../../state/store';
 import { searchLocal } from '../../services/search';
 import { formatDistance, formatDuration } from '../../domain/geo';
-import { EmptyState, PathIcon, useOnline } from '../ui';
+import { EmptyState, OutsideCoverageTag, PathIcon, useOnline } from '../ui';
+import { nearestCoveredEdge, outsideCoverageInfo } from '../../map/coverage';
+import { COVERAGE_BBOX } from '../../map/style';
 
 export function RoutePanel() {
   const { state, actions } = useStore();
@@ -21,6 +23,50 @@ export function RoutePanel() {
 
   const origin = route.origin;
   const plan = route.plan;
+
+  // Every route point is checked before the provider is contacted. The nearest
+  // covered point is deliberately not substituted: that would invent a walk to
+  // somewhere the reader did not choose.
+  const outsidePoints = useMemo(() => {
+    const points = [
+      ...(origin ? [{ ...origin, role: 'start' as const, index: -1 }] : []),
+      ...route.stops.map((stop, index) => ({ ...stop, role: 'stop' as const, index })),
+    ];
+    return points.flatMap((point) => {
+      const outside = outsideCoverageInfo(point.coordinates, COVERAGE_BBOX);
+      if (!outside) return [];
+      const edge = nearestCoveredEdge(point.coordinates, COVERAGE_BBOX);
+      return [{ ...point, ...outside, edgeDirection: edge?.direction ?? null }];
+    });
+  }, [origin, route.stops]);
+  const outsideKey = outsidePoints
+    .map((point) => `${point.role}:${point.index}:${point.coordinates.join(',')}`)
+    .join('|');
+  const [outsideWarningOpen, setOutsideWarningOpen] = useState(false);
+  const [acceptedOutsideKey, setAcceptedOutsideKey] = useState<string | null>(null);
+
+  useEffect(() => {
+    setAcceptedOutsideKey(null);
+    setOutsideWarningOpen(false);
+  }, [outsideKey]);
+
+  const isOutside = (coordinates: [number, number]) =>
+    outsideCoverageInfo(coordinates, COVERAGE_BBOX) !== null;
+
+  const requestPlan = () => {
+    if (outsidePoints.length > 0 && acceptedOutsideKey !== outsideKey) {
+      setOutsideWarningOpen(true);
+      return;
+    }
+    setOutsideWarningOpen(false);
+    void actions.planRoute();
+  };
+
+  const planOutsideAnyway = () => {
+    setAcceptedOutsideKey(outsideKey);
+    setOutsideWarningOpen(false);
+    void actions.planRoute();
+  };
 
   const externalDirections = () => {
     if (!origin || route.stops.length === 0) return null;
@@ -47,6 +93,7 @@ export function RoutePanel() {
             <span className="stop-badge">A</span>
             <span className="stop-label">
               <strong>{origin.label}</strong>
+              {isOutside(origin.coordinates) && <OutsideCoverageTag />}
               <span className="muted small">
                 {origin.coordinates[1].toFixed(5)}, {origin.coordinates[0].toFixed(5)}
               </span>
@@ -88,6 +135,7 @@ export function RoutePanel() {
                 <span className="stop-badge">{index + 1}</span>
                 <span className="stop-label">
                   <strong>{stop.label}</strong>
+                  {isOutside(stop.coordinates) && <OutsideCoverageTag />}
                   <span className="muted small">
                     {stop.coordinates[1].toFixed(5)}, {stop.coordinates[0].toFixed(5)}
                   </span>
@@ -141,6 +189,7 @@ export function RoutePanel() {
             <ul className="search-results inline">
               {hits.map((hit) => {
                 const place = hit.placeId ? dataset.placeById.get(hit.placeId) : null;
+                const outsideCoverage = outsideCoverageInfo(hit.coordinates, COVERAGE_BBOX);
                 return (
                   <li key={hit.id}>
                     <button
@@ -156,6 +205,7 @@ export function RoutePanel() {
                       <span>
                         <strong>{hit.title}</strong>
                         <span className="hit-sub">{hit.subtitle}</span>
+                        {outsideCoverage && <OutsideCoverageTag />}
                       </span>
                     </button>
                   </li>
@@ -194,10 +244,53 @@ export function RoutePanel() {
           type="button"
           className="button primary wide"
           disabled={route.status === 'loading' || !origin || route.stops.length === 0}
-          onClick={() => void actions.planRoute()}
+          onClick={requestPlan}
         >
           {route.status === 'loading' ? 'Planning…' : plan ? 'Plan again' : 'Find walking route'}
         </button>
+        {outsideWarningOpen && outsidePoints.length > 0 && (
+          <div className="route-outside-warning" role="alert" data-testid="route-outside-warning">
+            <p className="search-outside-eyebrow">Route leaves Night Map coverage</p>
+            <h3>
+              {outsidePoints.length === 1
+                ? 'One route point is outside the extract'
+                : `${outsidePoints.length} route points are outside the extract`}
+            </h3>
+            <p>
+              {outsidePoints.length === 1 ? 'This point sits' : 'These points sit'} beyond the amber dashed
+              boundary, where the basemap and street grid are intentionally blank. The routing service can still
+              return a path, but Night Map cannot show what it crosses.
+            </p>
+            <ul className="route-outside-points">
+              {outsidePoints.map((point) => (
+                <li key={`${point.role}-${point.index}`}>
+                  <strong>{point.label}</strong>{' '}
+                  <span className="muted small">
+                    {point.role === 'start' ? 'start' : `stop ${point.index + 1}`} ·{' '}
+                    {formatDistance(point.distanceMeters, settings.units)} from the nearest covered point
+                    {point.edgeDirection ? ` (edge to the ${point.edgeDirection})` : ''}
+                  </span>
+                </li>
+              ))}
+            </ul>
+            <p>
+              Planning also frames the returned walk in the map, so the camera may move over blank ground outside
+              the extract.
+            </p>
+            <div className="button-row">
+              <button type="button" className="button small" onClick={planOutsideAnyway}>
+                Plan anyway
+              </button>
+              <button
+                type="button"
+                className="button ghost small"
+                onClick={() => setOutsideWarningOpen(false)}
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
+        )}
         {!online && (
           <p className="notice warn">
             You are offline. Route planning needs the routing service; saved routes and notes are still available.
@@ -216,7 +309,7 @@ export function RoutePanel() {
               </>
             )}
             <div className="button-row">
-              <button type="button" className="button ghost small" onClick={() => void actions.planRoute()}>
+              <button type="button" className="button ghost small" onClick={requestPlan}>
                 Retry
               </button>
               {externalDirections() && (
@@ -257,7 +350,7 @@ export function RoutePanel() {
                   key={candidate.id}
                   type="button"
                   className={`alternative ${index === 0 ? 'is-active' : ''}`}
-                  onClick={() => index === 0 ? undefined : actions.planRoute()}
+                  onClick={() => index === 0 ? undefined : requestPlan()}
                 >
                   <span>Option {index + 1}</span>
                   <span>{formatDistance(candidate.distanceMeters, settings.units)}</span>

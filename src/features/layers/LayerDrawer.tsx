@@ -132,7 +132,16 @@ export function LayerDrawer({ onClose }: { onClose: () => void }) {
           <ul className="saved-views">
             {state.layerViews.map((view) => (
               <li key={view.id}>
-                <button type="button" className="link-button" onClick={() => actions.applyLayerView(view.id)}>
+                <button
+                  type="button"
+                  className="link-button"
+                  onClick={() => actions.applyLayerView(view.id)}
+                  title={
+                    view.camera
+                      ? 'Restore these layer toggles and this camera'
+                      : 'Restore these layer toggles; the camera stays where it is'
+                  }
+                >
                   Apply “{view.name}”
                 </button>
                 <button type="button" className="link-button" onClick={() => void actions.deleteLayerView(view.id)}>
@@ -156,6 +165,7 @@ export function LayerDrawer({ onClose }: { onClose: () => void }) {
             type="button"
             className="button small"
             disabled={!viewName.trim()}
+            title="Save the current layer toggles and camera framing"
             onClick={() => {
               void actions.saveLayerView(viewName.trim());
               setViewName('');

@@ -72,7 +72,8 @@ export function AppShell() {
 
   const views = useMemo(
     () => [...filteredViews(state, dataset), ...historyViews(state, dataset)],
-    [state],
+    // Camera bounds update on every pan; they must not rebuild the marker set.
+    [state.filters, state.reference, state.saved, state.observations, state.overrides, state.layers.landmarks],
   );
   const selectedPlace = state.selectedPlaceId
     ? dataset.placeById.get(state.selectedPlaceId) ?? (state.selectedPlaceId.startsWith('private:')

@@ -1,6 +1,27 @@
 import { expect, test } from '@playwright/test';
+import { openMap } from './helpers';
 
 test.describe('mobile field use', () => {
+  test('short-phone controls keep a 36 px touch target and clear the attribution', async ({ page }) => {
+    test.skip(test.info().project.name !== 'mobile', 'mobile-only layout check');
+    await page.setViewportSize({ width: 360, height: 640 });
+    await openMap(page);
+    await expect(page.locator('.maplibregl-ctrl-attrib')).toBeVisible({ timeout: 30_000 });
+
+    // The tilt pair is the newest control and the easiest to under-size.
+    for (const name of ['Tilt up', 'Tilt down']) {
+      const box = (await page.getByRole('button', { name, exact: true }).boundingBox())!;
+      expect(box.width).toBeGreaterThanOrEqual(36);
+      expect(box.height).toBeGreaterThanOrEqual(36);
+    }
+
+    // The two-row cluster starts below the map and must not run into the
+    // attribution line the sheet leaves visible.
+    const cluster = (await page.locator('.map-controls').boundingBox())!;
+    const attribution = (await page.locator('.maplibregl-ctrl-attrib').boundingBox())!;
+    expect(cluster.y + cluster.height).toBeLessThanOrEqual(attribution.y);
+  });
+
   test('map-first layout with a draggable sheet and quick capture', async ({ page }) => {
     test.skip(test.info().project.name !== 'mobile', 'mobile-only interaction spec');
     await page.goto('/');
@@ -48,7 +69,7 @@ test.describe('mobile field use', () => {
     // Touch targets for the core map controls carry accessible names.
     for (const name of [
       '3D view', 'Toggle satellite imagery', 'Street-level imagery',
-      'Realign to my GPS location', 'Layers', 'Map legend', 'Zoom in', 'Zoom out',
+      'Follow my GPS location', 'Layers', 'Map legend', 'Zoom in', 'Zoom out',
     ]) {
       await expect(page.getByRole('button', { name, exact: true }).first()).toBeVisible();
     }

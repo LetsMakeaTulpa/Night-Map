@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import {
   fetchKartaviewPhotos,
   KARTAVIEW_RADIUS_METRES,
@@ -9,6 +9,88 @@ import { formatDistance } from '../../domain/geo';
 import { useStore } from '../../state/store';
 
 type Status = 'unlocated' | 'loading' | 'ready' | 'empty' | 'error';
+
+/**
+ * Session-wide cap so a long registry list does not burst the public API.
+ * Photos are cached by the service, so scrolling back costs no requests.
+ */
+const MAX_PARALLEL_PHOTO_REQUESTS = 3;
+let activePhotoRequests = 0;
+const waitingPhotoRequests: Array<() => void> = [];
+
+async function nearestPhoto(center: [number, number]): Promise<KartaViewPhoto | null> {
+  if (activePhotoRequests >= MAX_PARALLEL_PHOTO_REQUESTS) {
+    await new Promise<void>((resolve) => waitingPhotoRequests.push(resolve));
+  }
+  activePhotoRequests += 1;
+  try {
+    const photos = await fetchKartaviewPhotos(center);
+    return photos[0] ?? null;
+  } finally {
+    activePhotoRequests -= 1;
+    waitingPhotoRequests.shift()?.();
+  }
+}
+
+/**
+ * The registry row's thumbnail: the nearest public street-level photo, fetched
+ * only once the row approaches the viewport. A missing photo is a quiet
+ * camera glyph rather than a second explanation on every row.
+ */
+export function BuildingThumb({ coordinates }: { coordinates: [number, number] | null }) {
+  const holder = useRef<HTMLSpanElement | null>(null);
+  const [nearViewport, setNearViewport] = useState(false);
+  const [photo, setPhoto] = useState<KartaViewPhoto | null>(null);
+
+  useEffect(() => {
+    const element = holder.current;
+    if (!element || nearViewport) return;
+    if (typeof IntersectionObserver === 'undefined') {
+      setNearViewport(true);
+      return;
+    }
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (entries.some((entry) => entry.isIntersecting)) {
+          setNearViewport(true);
+          observer.disconnect();
+        }
+      },
+      { rootMargin: '240px' },
+    );
+    observer.observe(element);
+    return () => observer.disconnect();
+  }, [nearViewport]);
+
+  useEffect(() => {
+    if (!nearViewport || !coordinates) return;
+    let cancelled = false;
+    nearestPhoto(coordinates)
+      .then((found) => {
+        if (!cancelled) setPhoto(found);
+      })
+      .catch(() => undefined);
+    return () => {
+      cancelled = true;
+    };
+  }, [nearViewport, coordinates]);
+
+  return (
+    <span className={`building-thumb${photo ? ' has-photo' : ''}`} ref={holder} aria-hidden="true">
+      {photo ? (
+        <img
+          src={photo.thumbUrl}
+          alt=""
+          loading="lazy"
+          decoding="async"
+          onError={() => setPhoto(null)}
+        />
+      ) : (
+        <CameraIcon />
+      )}
+    </span>
+  );
+}
 
 /**
  * A building photo beside the dossier header.

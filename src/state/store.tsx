@@ -15,6 +15,7 @@ import type {
   Collection,
   CorrectionReport,
   Filters,
+  CameraPose,
   LayerView,
   Observation,
   Place,
@@ -57,6 +58,7 @@ import {
   storageMode,
 } from '../services/storage';
 import { fetchWalkingRoute, RoutingError, straightLineFallback } from '../services/routing';
+import { cameraPoseFromView } from './layerViews';
 import { PresenceError, requirePresence } from '../services/presence';
 import { isFixAccurate, isFixFresh } from '../domain/messages';
 import { LAYERS } from '../map/layers';
@@ -96,7 +98,13 @@ export interface AppState {
   selectedStopId: string | null;
   /** A parcel dossier from the on-demand building registry. */
   selectedBuildingId: string | null;
-  selectedExternal: { label: string; detail: string; coordinates: [number, number] } | null;
+  selectedExternal: {
+    label: string;
+    detail: string;
+    coordinates: [number, number];
+    /** Why the pin is not the result itself, e.g. a nearest covered point. */
+    note?: string;
+  } | null;
   saved: SavedPlace[];
   observations: Observation[];
   collections: Collection[];
@@ -113,6 +121,12 @@ export interface AppState {
   /** Follow this device's GPS fix until the map is dragged or tracking is stopped. */
   gpsLocked: boolean;
   reference: { coordinates: [number, number]; label: string };
+  /** Visible map aperture in [west, south, east, north], or null when no map is visible. */
+  viewportBounds: [number, number, number, number] | null;
+  /** Where the camera last settled, so a saved view can record its framing. */
+  viewportCamera: CameraPose | null;
+  /** A camera a recalled saved view asked the map to restore. */
+  cameraRestore: { pose: CameraPose; request: number } | null;
   toast: Toast | null;
   sheet: 'dismissed' | 'collapsed' | 'peek' | 'expanded';
 }
@@ -177,6 +191,9 @@ const initialState: AppState = {
   userLocation: null,
   gpsLocked: false,
   reference: { coordinates: SF_CENTER, label: 'Map centre' },
+  viewportBounds: null,
+  viewportCamera: null,
+  cameraRestore: null,
   toast: null,
   sheet: 'collapsed',
 };
@@ -272,6 +289,8 @@ interface StoreValue {
     toggleCompare: (placeId: string) => void;
     clearCompare: () => void;
     setReferenceToMap: (coordinates: [number, number]) => void;
+    setViewportBounds: (bounds: [number, number, number, number] | null) => void;
+    setViewportCamera: (pose: CameraPose) => void;
     notify: (message: string, tone?: Toast['tone']) => void;
     dismissToast: () => void;
   };
@@ -553,6 +572,9 @@ export function AppProvider({ children }: { children: ReactNode }) {
           name,
           visible: state.layers,
           createdAt: new Date().toISOString(),
+          // Recorded only when the map has reported a camera; the field stays
+          // optional so older stored views and their readers are unaffected.
+          ...(state.viewportCamera ? { camera: state.viewportCamera } : {}),
         };
         await writeOne('layerViews', view);
         setState((s) => ({ ...s, layerViews: [...s.layerViews, view] }));
@@ -562,7 +584,16 @@ export function AppProvider({ children }: { children: ReactNode }) {
         setState((s) => {
           const view = s.layerViews.find((v) => v.id === id);
           if (!view) return s;
-          return { ...s, layers: { ...initialState.layers, ...view.visible } };
+          const camera = cameraPoseFromView(view);
+          return {
+            ...s,
+            layers: { ...initialState.layers, ...view.visible },
+            // A view stored before cameras were recorded has no pose: it
+            // restores its layer toggles and leaves the camera untouched.
+            cameraRestore: camera
+              ? { pose: camera, request: (s.cameraRestore?.request ?? 0) + 1 }
+              : s.cameraRestore,
+          };
         }),
       deleteLayerView: async (id) => {
         await deleteOne('layerViews', id);
@@ -1250,6 +1281,34 @@ export function AppProvider({ children }: { children: ReactNode }) {
       clearCompare: () => setState((s) => ({ ...s, compareIds: [] })),
       setReferenceToMap: (coordinates) =>
         setState((s) => ({ ...s, reference: { coordinates, label: 'Map centre' } })),
+      setViewportCamera: (pose) =>
+        setState((s) => {
+          const current = s.viewportCamera;
+          if (
+            current &&
+            Math.abs(current.center[0] - pose.center[0]) < 1e-9 &&
+            Math.abs(current.center[1] - pose.center[1]) < 1e-9 &&
+            Math.abs(current.zoom - pose.zoom) < 1e-4 &&
+            Math.abs(current.pitch - pose.pitch) < 1e-4 &&
+            Math.abs(current.bearing - pose.bearing) < 1e-4
+          ) {
+            return s;
+          }
+          return { ...s, viewportCamera: pose };
+        }),
+      setViewportBounds: (bounds) =>
+        setState((s) => {
+          const current = s.viewportBounds;
+          if (!bounds && !current) return s;
+          if (
+            bounds &&
+            current &&
+            current.every((value, index) => Math.abs(value - bounds[index]) < 1e-9)
+          ) {
+            return s;
+          }
+          return { ...s, viewportBounds: bounds };
+        }),
 
       notify,
       dismissToast: () => setState((s) => ({ ...s, toast: null })),

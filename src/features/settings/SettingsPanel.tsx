@@ -224,20 +224,6 @@ export function SettingsPanel({ onClose }: { onClose: () => void }) {
         </div>
       </details>
 
-      <details className="drawer-group drawer-fineprint">
-        <summary>
-          <span>What Night Map does not do</span>
-        </summary>
-        <div className="drawer-group-body">
-          <ul className="plain-list">
-            <li>No account, no tracking, no analytics, no ads.</li>
-            <li>No public feed of people or encampments.</li>
-            <li>No crime, safety or “risk” scores for streets or people.</li>
-            <li>No claim that a marker means a service is open, stocked or available.</li>
-            <li>No live bed availability, live arrivals, or live opening status.</li>
-          </ul>
-        </div>
-      </details>
     </aside>
   );
 }

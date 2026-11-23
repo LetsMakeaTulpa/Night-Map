@@ -6,6 +6,7 @@ import { EmptyState } from '../ui';
 import type { BuildingRegistry, BuildingStatus } from '../../domain/types';
 import { formatDate } from '../../domain/status';
 import { PathIcon } from '../ui';
+import { BuildingThumb } from './BuildingPhoto';
 
 const PAGE_SIZE = 60;
 
@@ -179,18 +180,21 @@ export function BuildingsWorkspace() {
                   className={`building-row ${state.selectedBuildingId === dossier.id ? 'is-selected' : ''}`}
                   onClick={() => actions.selectBuilding(dossier.id)}
                 >
-                  <span className="building-row-head">
-                    <strong>{dossier.address}</strong>
-                    <span className={`building-status status-${dossier.status}`}>{meta?.short ?? dossier.status}</span>
-                  </span>
-                  <span className="building-row-meta">
-                    Block {dossier.block} / lot {dossier.lot}
-                    {dossier.neighborhood ? ` · ${dossier.neighborhood}` : ''}
-                    {dossier.coordinates ? '' : ' · no published point'}
-                  </span>
-                  <span className="building-row-counts">{buildingRecordSummary(dossier)}</span>
-                  <span className="building-row-score">
-                    Record priority {dossier.score}/100 · {dossier.confidence} confidence
+                  <BuildingThumb coordinates={dossier.coordinates} />
+                  <span className="building-row-body">
+                    <span className="building-row-head">
+                      <strong>{dossier.address}</strong>
+                      <span className={`building-status status-${dossier.status}`}>{meta?.short ?? dossier.status}</span>
+                    </span>
+                    <span className="building-row-meta">
+                      Block {dossier.block} / lot {dossier.lot}
+                      {dossier.neighborhood ? ` · ${dossier.neighborhood}` : ''}
+                      {dossier.coordinates ? '' : ' · no published point'}
+                    </span>
+                    <span className="building-row-counts">{buildingRecordSummary(dossier)}</span>
+                    <span className="building-row-score">
+                      Record priority {dossier.score}/100 · {dossier.confidence} confidence
+                    </span>
                   </span>
                 </button>
               </li>

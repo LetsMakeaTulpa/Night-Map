@@ -90,6 +90,18 @@ export function historyViews(state: AppState, index: DatasetIndex, now = new Dat
   return index.data.places.filter((place) => place.category === 'history').map((place) => buildPlaceView(place, index, state, now));
 }
 
+export function viewsInBounds(
+  views: PlaceView[],
+  bounds: [number, number, number, number] | null,
+): PlaceView[] {
+  if (!bounds) return [];
+  const [west, south, east, north] = bounds;
+  return views.filter(({ place }) => {
+    const [lng, lat] = place.geometry.coordinates;
+    return lng >= west && lng <= east && lat >= south && lat <= north;
+  });
+}
+
 export function categoryCountsForResults(views: PlaceView[]): Record<CategoryId, number> {
   const counts = {} as Record<CategoryId, number>;
   for (const view of views) counts[view.place.category] = (counts[view.place.category] ?? 0) + 1;

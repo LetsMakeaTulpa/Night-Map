@@ -493,11 +493,24 @@ export interface Settings {
   outsideLimit: number;
 }
 
+/** A camera framing a saved view can restore. */
+export interface CameraPose {
+  center: [number, number];
+  zoom: number;
+  pitch: number;
+  bearing: number;
+}
+
 export interface LayerView {
   id: string;
   name: string;
   visible: Record<string, boolean>;
   createdAt: string;
+  /**
+   * Optional so views stored before cameras were recorded keep working: they
+   * restore their layer toggles and leave the camera where the reader left it.
+   */
+  camera?: CameraPose;
 }
 
 /** What the geocoder returned for one access record, kept so it can be re-checked. */

@@ -21,6 +21,18 @@ export function CategoryMark({ category, size = 20 }: { category: CategoryId; si
   );
 }
 
+/** Marks a record, result or route point beyond the bundled extract. */
+export function OutsideCoverageTag() {
+  return (
+    <span
+      className="tag outside"
+      title="Beyond the bundled central-San Francisco extract; street detail stops at the amber boundary."
+    >
+      Outside coverage
+    </span>
+  );
+}
+
 export function EvidencePill({ evidence, compact = false }: { evidence: EvidenceStatus; compact?: boolean }) {
   return (
     <span className={`evidence-pill tone-${evidence.tone}`} title={evidence.detail}>

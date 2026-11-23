@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { matchesFilters, type PlaceView } from './selectors';
+import { matchesFilters, viewsInBounds, type PlaceView } from './selectors';
 import { evidenceFor } from '../domain/status';
 import type { Filters, Place, Resource } from '../domain/types';
 
@@ -97,5 +97,22 @@ describe('matchesFilters', () => {
     expect(matchesFilters(view(), { ...baseFilters, freeOnly: true })).toBe(true);
     expect(matchesFilters(view(), { ...baseFilters, nearTransit: true })).toBe(true);
     expect(matchesFilters({ ...view(), isNearTransit: false }, { ...baseFilters, nearTransit: true })).toBe(false);
+  });
+});
+
+describe('viewsInBounds', () => {
+  const at = (coordinates: [number, number]): PlaceView => ({
+    ...view(),
+    place: { ...place, geometry: { type: 'Point', coordinates } },
+  });
+  const bounds: [number, number, number, number] = [-122.42, 37.77, -122.4, 37.79];
+
+  it('returns only records inside the viewport, including its edges', () => {
+    expect(viewsInBounds([at([-122.41, 37.78]), at([-122.42, 37.77]), at([-122.4, 37.79])], bounds)).toHaveLength(3);
+    expect(viewsInBounds([at([-122.43, 37.78]), at([-122.41, 37.8])], bounds)).toEqual([]);
+  });
+
+  it('returns no in-view records before the map publishes camera bounds', () => {
+    expect(viewsInBounds([at([-122.41, 37.78])], null)).toEqual([]);
   });
 });

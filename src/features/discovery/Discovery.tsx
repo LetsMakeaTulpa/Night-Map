@@ -2,16 +2,38 @@ import { useEffect, useMemo, useRef, useState, type CSSProperties } from 'react'
 import { CATEGORIES } from '../../domain/categories';
 import { dataset } from '../../data';
 import { useStore } from '../../state/store';
-import { activeFilterCount, filteredViews, nearbyViews } from '../../state/selectors';
+import {
+  activeFilterCount,
+  categoryCountsForResults,
+  filteredViews,
+  nearbyViews,
+  viewsInBounds,
+} from '../../state/selectors';
 import { searchLocal, type SearchHit } from '../../services/search';
 import { geocodePhoton, GeocodeError } from '../../services/geocoding';
 import { formatDistance } from '../../domain/geo';
 import { freshCheckCount, isFreshCheck, latestPlaceChecks, SURVEY_CHECK_DAYS } from '../../domain/survey';
 import { formatDate } from '../../domain/status';
-import { EmptyState, EvidencePill, PathIcon, useOnline } from '../ui';
+import { EmptyState, EvidencePill, OutsideCoverageTag, PathIcon, useOnline } from '../ui';
 import { CATEGORY_BY_ID } from '../../domain/categories';
-import { isQuickViewActive, quickViewPatch, type QuickViewId } from '../../domain/discovery-presets';
+import {
+  QUICK_VIEWS,
+  QUICK_VIEW_IDS,
+  isQuickViewActive,
+  quickViewPatch,
+  type QuickViewId,
+} from '../../domain/discovery-presets';
 import { requestSurveyFlyTo } from '../../map/survey-flyto';
+import { outsideCoverageInfo, pointInCoverage, viewportTouchesCoverage } from '../../map/coverage';
+import { COVERAGE_BBOX } from '../../map/style';
+import { requestFitCoverage, requestFitRecords } from '../../map/viewport-actions';
+
+const QUICK_VIEW_ICON: Record<QuickViewId, string> = {
+  essentials: '🧭',
+  'after-dark': '🌙',
+  connections: '🚇',
+  scenes: '✨',
+};
 
 export function SearchBar({ autoFocus = false, onNavigate }: { autoFocus?: boolean; onNavigate?: () => void }) {
   const { state, actions } = useStore();
@@ -23,6 +45,11 @@ export function SearchBar({ autoFocus = false, onNavigate }: { autoFocus?: boole
   const wrapRef = useRef<HTMLDivElement | null>(null);
   const inputRef = useRef<HTMLInputElement | null>(null);
   const online = useOnline();
+  const [outsidePending, setOutsidePending] = useState<{
+    hit: SearchHit;
+    nearest: [number, number];
+    distanceMeters: number;
+  } | null>(null);
 
   const localHits = useMemo(
     () => (query.trim().length >= 2 ? searchLocal(query, dataset.data) : []),
@@ -41,9 +68,33 @@ export function SearchBar({ autoFocus = false, onNavigate }: { autoFocus?: boole
     return () => document.removeEventListener('mousedown', onClick);
   }, []);
 
+  // The warning moves focus to its action, so Escape must close it from there
+  // as well as from the search input.
+  useEffect(() => {
+    if (!outsidePending) return;
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key !== 'Escape') return;
+      event.stopPropagation();
+      setOutsidePending(null);
+      setOpen(true);
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [outsidePending]);
+
   const choose = (hit: SearchHit) => {
+    const outside = outsideCoverageInfo(hit.coordinates, COVERAGE_BBOX);
+    if (outside) {
+      // Do not select or fly yet. The result is outside the mapped extract, so
+      // the warning replaces the result list and offers the nearest covered
+      // point instead of dropping the camera into blank map.
+      setOpen(false);
+      setOutsidePending({ hit, ...outside });
+      return;
+    }
     setOpen(false);
     setQuery('');
+    setOutsidePending(null);
     if (hit.placeId) {
       actions.selectPlace(hit.placeId);
       actions.setSheet('peek');
@@ -51,11 +102,37 @@ export function SearchBar({ autoFocus = false, onNavigate }: { autoFocus?: boole
     } else {
       actions.selectExternal({ label: hit.title, detail: hit.subtitle, coordinates: hit.coordinates });
       actions.notify(`${hit.title} — map moved. No resource record is attached to this label.`);
+      onNavigate?.();
     }
+  };
+
+  const showNearestCovered = () => {
+    if (!outsidePending) return;
+    const { hit, nearest, distanceMeters } = outsidePending;
+    setOutsidePending(null);
+    actions.selectExternal({
+      label: hit.title,
+      detail: `${hit.subtitle} · nearest covered point`,
+      coordinates: nearest,
+      note: 'nearest covered point',
+    });
+    actions.notify(
+      `${hit.title} is outside Night Map coverage. Showing the nearest covered point, ${formatDistance(distanceMeters, state.settings.units)} from the result and inside the boundary.`,
+      'warn',
+    );
+    onNavigate?.();
+  };
+
+  const dismissOutside = () => {
+    setOutsidePending(null);
+    // Keep the query so the result list is one click away if the reader wants
+    // to choose a different hit.
+    setOpen(true);
   };
 
   const searchWider = async () => {
     if (!query.trim() || !online) return;
+    setOutsidePending(null);
     setWideLoading(true);
     setWideError(null);
     try {
@@ -95,6 +172,7 @@ export function SearchBar({ autoFocus = false, onNavigate }: { autoFocus?: boole
           onChange={(e) => {
             setQuery(e.target.value);
             setWideResults(null);
+            setOutsidePending(null);
             setOpen(true);
           }}
           onKeyDown={(e) => {
@@ -110,6 +188,7 @@ export function SearchBar({ autoFocus = false, onNavigate }: { autoFocus?: boole
             onClick={() => {
               setQuery('');
               setWideResults(null);
+              setOutsidePending(null);
             }}
           >
             ×
@@ -117,18 +196,54 @@ export function SearchBar({ autoFocus = false, onNavigate }: { autoFocus?: boole
         )}
       </div>
 
-      {open && query.trim().length >= 2 && (
-        <div className="search-results" role="listbox" aria-label="Search results">
-          {wideResults && <p className="search-scope">Wider address search — these results carry no Night Map evidence.</p>}
-          {results.slice(0, 8).map((hit) => (
-            <button key={hit.id} type="button" className="search-hit" role="option" aria-selected={false} onClick={() => choose(hit)}>
-              <span className={`hit-kind hit-${hit.kind}`}>{hit.kind === 'place' ? 'PLACE' : hit.kind.toUpperCase()}</span>
-              <span>
-                <strong>{hit.title}</strong>
-                <span className="hit-sub">{hit.subtitle}</span>
-              </span>
+      {outsidePending ? (
+        <div
+          className="search-outside"
+          role="alertdialog"
+          aria-label="Search result outside Night Map coverage"
+          data-testid="search-outside-warning"
+        >
+          <p className="search-outside-eyebrow">Outside Night Map coverage</p>
+          <h3>{outsidePending.hit.title}</h3>
+          <p>
+            This result sits beyond the bundled central-San Francisco extract. The map past the amber dashed
+            boundary is intentionally blank, so the camera has not moved.
+          </p>
+          <p className="search-outside-nearest">
+            Nearest covered point{' '}
+            <strong>{formatDistance(outsidePending.distanceMeters, state.settings.units)}</strong> away, just
+            inside the boundary.
+          </p>
+          <div className="search-outside-actions">
+            <button type="button" className="button small" autoFocus onClick={showNearestCovered}>
+              Show nearest covered point
             </button>
-          ))}
+            <button type="button" className="button ghost small" onClick={dismissOutside}>
+              Cancel
+            </button>
+          </div>
+        </div>
+      ) : open && query.trim().length >= 2 && (
+        <div className="search-results" role="listbox" aria-label="Search results">
+          {wideResults && (
+            <p className="search-scope">
+              Wider address search — results outside the amber boundary are labelled and will not move the
+              camera there.
+            </p>
+          )}
+          {results.slice(0, 8).map((hit) => {
+            const outside = outsideCoverageInfo(hit.coordinates, COVERAGE_BBOX);
+            return (
+              <button key={hit.id} type="button" className="search-hit" role="option" aria-selected={false} onClick={() => choose(hit)}>
+                <span className={`hit-kind hit-${hit.kind}`}>{hit.kind === 'place' ? 'PLACE' : hit.kind.toUpperCase()}</span>
+                <span>
+                  <strong>{hit.title}</strong>
+                  <span className="hit-sub">{hit.subtitle}</span>
+                  {outside && <span className="hit-outside">Outside coverage</span>}
+                </span>
+              </button>
+            );
+          })}
           {results.length === 0 && (
             <p className="search-empty">
               Nothing in the Night Map index. That is not proof the place does not exist — the index covers a central
@@ -155,6 +270,42 @@ export function FilterBar({ compact = false }: { compact?: boolean }) {
   const { state, actions } = useStore();
   const [expanded, setExpanded] = useState(!compact);
   const active = activeFilterCount(state.filters);
+  const matching = useMemo(
+    () => filteredViews(state, dataset),
+    // Camera bounds are not a filter input: a pan changes counts, not matches.
+    [state.filters, state.reference, state.saved, state.observations, state.overrides],
+  );
+  const allCategories = useMemo(() => CATEGORIES.map((category) => category.id), []);
+  // Chip counts describe what each category would contribute in this view,
+  // including categories that are currently switched off. Applying the active
+  // category filter here would paint every disabled chip as an empty result.
+  const available = useMemo(
+    () => filteredViews({ ...state, filters: { ...state.filters, categories: allCategories } }, dataset),
+    [state.filters, state.reference, state.saved, state.observations, state.overrides, allCategories],
+  );
+  const availableCounts = useMemo(() => categoryCountsForResults(available), [available]);
+  const availableInView = useMemo(
+    () => viewsInBounds(available, state.viewportBounds),
+    [available, state.viewportBounds],
+  );
+  const availableInViewCounts = useMemo(
+    () => categoryCountsForResults(availableInView),
+    [availableInView],
+  );
+  const inViewTotal = useMemo(
+    () => viewsInBounds(matching, state.viewportBounds).length,
+    [matching, state.viewportBounds],
+  );
+  // Only in-extract records can be framed. A match beyond the boundary has no
+  // mapped ground to zoom to, so the recovery becomes "show coverage" instead
+  // of promising a camera move to a blank area.
+  const fitTargetCount = useMemo(
+    () => matching.filter((view) => pointInCoverage(view.place.geometry.coordinates, COVERAGE_BBOX)).length,
+    [matching],
+  );
+  const outsideView = state.viewportBounds
+    ? !viewportTouchesCoverage(state.viewportBounds, COVERAGE_BBOX)
+    : false;
   const unpopulatedCategories = CATEGORIES.filter(
     (category) => state.filters.categories.includes(category.id) && (dataset.categoryCounts[category.id] ?? 0) === 0,
   );
@@ -164,28 +315,135 @@ export function FilterBar({ compact = false }: { compact?: boolean }) {
   const applyPreset = (preset: QuickViewId) => actions.setFilter(quickViewPatch(preset));
   const isPresetActive = (preset: QuickViewId) => isQuickViewActive(state.filters, preset);
 
+  // A quick-view chip reports what pressing it would show: matches in the
+  // current view once the map has reported one, otherwise matches overall. It
+  // uses the same filtered record set and bounds test as the in-view counts.
+  const quickViewCounts = useMemo(() => {
+    const counts = {} as Record<QuickViewId, { total: number; inView: number }>;
+    for (const id of QUICK_VIEW_IDS) {
+      const views = filteredViews(
+        { ...state, filters: { ...state.filters, ...quickViewPatch(id) } },
+        dataset,
+      );
+      counts[id] = {
+        total: views.length,
+        inView: state.viewportBounds ? viewsInBounds(views, state.viewportBounds).length : views.length,
+      };
+    }
+    return counts;
+  }, [state.filters, state.reference, state.saved, state.observations, state.overrides, state.viewportBounds]);
+  const activeQuickView = QUICK_VIEW_IDS.find((id) => isQuickViewActive(state.filters, id)) ?? null;
+  // A preset can match plenty of records while the current view holds none.
+  // The chip count says zero; this notice explains it and offers the fit.
+  const quickViewEmpty =
+    activeQuickView !== null &&
+    Boolean(state.viewportBounds) &&
+    !outsideView &&
+    quickViewCounts[activeQuickView].inView === 0 &&
+    quickViewCounts[activeQuickView].total > 0;
+
   return (
     <div className="filterbar">
       <div className="filter-presets" aria-label="Quick map views">
         <span className="filter-presets-label">Quick views</span>
-        <button type="button" className={`button ghost tiny ${isPresetActive('essentials') ? 'is-active' : ''}`} aria-pressed={isPresetActive('essentials')} onClick={() => applyPreset('essentials')}>Essentials</button>
-        <button type="button" className={`button ghost tiny ${isPresetActive('after-dark') ? 'is-active' : ''}`} aria-pressed={isPresetActive('after-dark')} onClick={() => applyPreset('after-dark')}>After-dark POPOS</button>
-        <button type="button" className={`button ghost tiny ${isPresetActive('connections') ? 'is-active' : ''}`} aria-pressed={isPresetActive('connections')} onClick={() => applyPreset('connections')}>Transit & connections</button>
-        <button type="button" className={`button ghost tiny ${isPresetActive('scenes') ? 'is-active' : ''}`} aria-pressed={isPresetActive('scenes')} onClick={() => applyPreset('scenes')}>Scenes & hideaways</button>
+        {QUICK_VIEW_IDS.map((id) => {
+          const { total, inView } = quickViewCounts[id];
+          const count = state.viewportBounds ? inView : total;
+          const active = isPresetActive(id);
+          return (
+            <button
+              key={id}
+              type="button"
+              className={`button ghost tiny ${active ? 'is-active' : ''}`}
+              aria-pressed={active}
+              aria-label={`${QUICK_VIEWS[id].label} quick view, ${count} ${state.viewportBounds ? 'in view' : 'matching'}`}
+              title={
+                state.viewportBounds
+                  ? `${inView} in view · ${total} matching ${total === 1 ? 'record' : 'records'}`
+                  : `${total} ${total === 1 ? 'record' : 'records'} in this release`
+              }
+              onClick={() => applyPreset(id)}
+              data-testid={`quick-view-${id}`}
+            >
+              <span className="filter-preset-icon" aria-hidden="true">{QUICK_VIEW_ICON[id]}</span>
+              {QUICK_VIEWS[id].label}
+              <span className="filter-count" data-testid={`quick-view-count-${id}`}>{count}</span>
+            </button>
+          );
+        })}
       </div>
+      {quickViewEmpty && activeQuickView && (
+        <div className="filter-view-status is-empty-view" role="status" data-testid="quick-view-empty">
+          <span>
+            <strong>{QUICK_VIEWS[activeQuickView].label}</strong> has{' '}
+            {quickViewCounts[activeQuickView].total}{' '}
+            {quickViewCounts[activeQuickView].total === 1 ? 'match' : 'matches'} outside this view.
+          </span>
+          <button type="button" className="link-button" onClick={requestFitRecords}>
+            Fit to {quickViewCounts[activeQuickView].total}{' '}
+            {quickViewCounts[activeQuickView].total === 1 ? 'match' : 'matches'}
+          </button>
+        </div>
+      )}
       <p className="filter-presets-note">Quick views change filters only; they do not confirm current hours, entry rights, or accessibility.</p>
+      {state.viewportBounds && !quickViewEmpty && (outsideView || matching.length > 0) && (
+        <div
+          className={`filter-view-status ${outsideView ? 'is-outside' : inViewTotal === 0 ? 'is-empty-view' : ''}`}
+          role="status"
+          data-testid="filter-view-status"
+        >
+          {outsideView ? (
+            <>
+              <span><strong>Outside coverage</strong> · this view is beyond the mapped extract.</span>
+              <button type="button" className="link-button" onClick={requestFitCoverage}>
+                Show all coverage
+              </button>
+            </>
+          ) : inViewTotal === 0 ? (
+            <>
+              <span>
+                <strong>No records in this view</strong> · {matching.length}{' '}
+                {matching.length === 1 ? 'record matches' : 'records match'} the current filters elsewhere.
+              </span>
+              {fitTargetCount > 0 ? (
+                <button type="button" className="link-button" onClick={requestFitRecords}>
+                  Zoom to {fitTargetCount} {fitTargetCount === 1 ? 'record' : 'records'}
+                </button>
+              ) : (
+                <button type="button" className="link-button" onClick={requestFitCoverage}>
+                  Show all coverage
+                </button>
+              )}
+            </>
+          ) : (
+            <span>
+              <strong>{inViewTotal}</strong> of {matching.length} matching{' '}
+              {matching.length === 1 ? 'record' : 'records'} in view
+            </span>
+          )}
+        </div>
+      )}
       <div className="filter-chips">
         {CATEGORIES.map((category) => {
           const enabled = state.filters.categories.includes(category.id);
-          const count = dataset.categoryCounts[category.id] ?? 0;
+          const installed = dataset.categoryCounts[category.id] ?? 0;
+          const matchingCount = availableCounts[category.id] ?? 0;
+          const inView = availableInViewCounts[category.id] ?? 0;
+          const count = state.viewportBounds ? inView : installed;
           return (
             <button
               key={category.id}
               type="button"
-              className={`filter-chip ${enabled ? 'is-active' : ''} ${count === 0 ? 'is-empty' : ''}`}
+              className={`filter-chip ${enabled ? 'is-active' : ''} ${installed === 0 ? 'is-empty' : ''}`}
               aria-pressed={enabled}
               onClick={() => actions.toggleCategory(category.id)}
-              title={count === 0 ? category.serviceNote ?? 'No places installed in this release' : `${count} places in this release`}
+              title={
+                installed === 0
+                  ? category.serviceNote ?? 'No places installed in this release'
+                  : state.viewportBounds
+                    ? `${inView} in view · ${matchingCount} matching ${matchingCount === 1 ? 'record' : 'records'} · ${installed} installed in this release`
+                    : `${installed} places in this release`
+              }
               style={{ '--chip': category.color } as CSSProperties}
             >
               <span className="filter-dot" aria-hidden="true" />
@@ -306,6 +564,7 @@ export function NearbyList({ mode = 'nearby' }: { mode?: 'nearby' | 'results' })
     () => freshCheckCount(checks, views.map((view) => view.place.id)),
     [checks, views],
   );
+  const inViewCount = viewsInBounds(views, state.viewportBounds).length;
 
   const recordCheck = async (view: (typeof views)[number]) => {
     const created = await actions.createObservation({
@@ -333,6 +592,11 @@ export function NearbyList({ mode = 'nearby' }: { mode?: 'nearby' | 'results' })
           <p className="eyebrow">{mode === 'nearby' ? 'Nearby, in walking order' : 'All matching places'}</p>
           <h2>
             {views.length} {views.length === 1 ? 'place' : 'places'}
+            {state.viewportBounds && views.length > 0 && (
+              <span className="nearby-view-count">
+                {inViewCount} in view
+              </span>
+            )}
           </h2>
         </div>
         <div className="nearby-head-tools">
@@ -396,6 +660,7 @@ export function NearbyList({ mode = 'nearby' }: { mode?: 'nearby' | 'results' })
           {views.map((view) => {
             const def = CATEGORY_BY_ID.get(view.place.category);
             const selected = state.selectedPlaceId === view.place.id;
+            const outsideCoverage = outsideCoverageInfo(view.place.geometry.coordinates, COVERAGE_BBOX);
             const checkedAt = checks.get(view.place.id);
             const freshCheck = isFreshCheck(checkedAt);
             return (
@@ -427,6 +692,7 @@ export function NearbyList({ mode = 'nearby' }: { mode?: 'nearby' | 'results' })
                       {view.place.address ?? 'No address in the record'} · {formatDistance(view.distanceMeters, state.settings.units)} · {view.walkMinutes} min walk
                     </span>
                     <span className="nearby-tags">
+                      {outsideCoverage && <OutsideCoverageTag />}
                       <EvidencePill evidence={view.evidence} compact />
                       {view.evidence.openNow === true && <span className="tag open">Open now</span>}
                       {view.evidence.openNow === false && <span className="tag closed">Closed now</span>}
@@ -502,12 +768,14 @@ export function NearbySummary() {
         <ul className="summary-list">
           {closest.map((view) => {
             const def = CATEGORY_BY_ID.get(view.place.category);
+            const outsideCoverage = outsideCoverageInfo(view.place.geometry.coordinates, COVERAGE_BBOX);
             return (
               <li key={view.place.id}>
                 <button type="button" onClick={() => actions.selectPlace(view.place.id)}>
                   <span className="summary-mark" style={{ background: def?.color }} />
                   <span>
                     <strong>{view.place.name}</strong>
+                    {outsideCoverage && <OutsideCoverageTag />}
                     <span className="muted small">
                       {formatDistance(view.distanceMeters, state.settings.units)} · {view.walkMinutes} min
                     </span>

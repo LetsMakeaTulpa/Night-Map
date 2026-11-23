@@ -15,6 +15,13 @@ async function camera(page: Page): Promise<CameraState> {
   });
 }
 
+/** The readout is whole degrees; the renderer's own angle carries float noise. */
+async function expectPitch(page: Page, expected: number) {
+  await expect
+    .poll(async () => Math.abs((await camera(page)).pitch - expected), { timeout: 15_000 })
+    .toBeLessThan(0.01);
+}
+
 async function mapState(page: Page) {
   return page.evaluate(() => {
     const map = (window as unknown as {
@@ -27,7 +34,12 @@ async function mapState(page: Page) {
     }).__nightmap;
     return {
       terrain: map?.getTerrain() ?? null,
-      hillshade: map?.getLayer('hillshade')?.visibility ?? null,
+      terrainSource: (map?.getTerrain() as { source?: string } | null)?.source ?? null,
+      // Shading is the fine layer in a plan view and the coarse one when pitched.
+      shading:
+        map?.getLayer('hillshade-coarse')?.visibility === 'visible'
+          ? 'coarse'
+          : (map?.getLayer('hillshade')?.visibility ?? null),
       buildingsLayer: map?.getLayer('buildings-3d')?.visibility ?? null,
       buildingFeatures: map?.querySourceFeatures('buildings').length ?? 0,
       extrusion: JSON.stringify(map?.getPaintProperty('buildings-3d', 'fill-extrusion-height') ?? null),
@@ -64,14 +76,132 @@ test.describe('Scenario J — see the city in three dimensions', () => {
     await expect(page.getByText(/tilted \d+°/)).toBeVisible();
     const state = await mapState(page);
     expect(state.terrain).not.toBeNull();
-    expect(state.hillshade).toBe('visible');
+    // The 3D control tilts to 55°, past the coarse-DEM threshold, so both the
+    // mesh and the shading read the z13 tiles instead of four times as many.
+    expect(state.terrainSource).toBe('terrainCoarse');
+    expect(state.shading).toBe('coarse');
     expect(state.buildingsLayer).toBe('visible');
 
-    // A tilted plan is not the only view, and leaving it is one action.
+    // A tilted plan is not the only view, and leaving it is one action. A level
+    // camera goes back to the fine shading.
     await page.getByRole('button', { name: 'Reset north and tilt' }).click();
     await expect.poll(async () => (await camera(page)).pitch).toBe(0);
+    await expect.poll(async () => (await mapState(page)).shading).toBe('visible');
+    await expect.poll(async () => (await mapState(page)).terrainSource).toBe('terrain');
     await expect.poll(async () => Math.abs((await camera(page)).bearing)).toBeLessThan(1);
     await expect(page.getByText(/tilted \d+°/)).toHaveCount(0);
+
+    // Two presses inside one eased move must each advance a full step: the
+    // second builds on the first step's target, not on the angle reached so far.
+    await page.getByRole('button', { name: 'Tilt up' }).dblclick();
+    await expect.poll(async () => (await camera(page)).pitch, { timeout: 15_000 }).toBeGreaterThan(19);
+    await page.getByRole('button', { name: 'Tilt down' }).dblclick();
+    await expect.poll(async () => (await camera(page)).pitch, { timeout: 15_000 }).toBeLessThan(1);
+  });
+
+  test('each tilt click is one step, the angle stops at its limits, and reset returns top-down', async ({ page }) => {
+    await openMap(page);
+    const tiltUp = page.getByRole('button', { name: 'Tilt up' });
+    const tiltDown = page.getByRole('button', { name: 'Tilt down' });
+
+    expect((await camera(page)).pitch).toBe(0);
+    // Nothing can lower a top-down camera, and one step is always available.
+    await expect(tiltDown).toBeDisabled();
+    await expect(tiltUp).toBeEnabled();
+
+    // Eight steps of 10° would reach 80°; the camera stops at the 78° limit
+    // instead, and the control says so by switching itself off.
+    for (const expected of [10, 20, 30, 40, 50, 60, 70, 78]) {
+      await tiltUp.click();
+      await expectPitch(page, expected);
+    }
+    await expect(tiltUp).toBeDisabled();
+    await expect(tiltDown).toBeEnabled();
+    // The goal timer that guarantees arrival must not change the angle when it
+    // lands, and the step control must stay switched off at the limit.
+    await page.waitForTimeout(1200);
+    await expectPitch(page, 78);
+    await expect(tiltUp).toBeDisabled();
+
+    // Coming back down the same steps must not overshoot or undershoot zero.
+    for (const expected of [68, 58, 48, 38, 28, 18, 8, 0]) {
+      await tiltDown.click();
+      await expectPitch(page, expected);
+    }
+    await expect(tiltDown).toBeDisabled();
+    await expect(tiltUp).toBeEnabled();
+
+    // Reset is the one-action way back to a plan view from any tilted angle.
+    await tiltUp.click();
+    await tiltUp.click();
+    await expectPitch(page, 20);
+    await page.getByRole('button', { name: 'Reset north and tilt' }).click();
+    await expectPitch(page, 0);
+    await expect.poll(async () => Math.abs((await camera(page)).bearing)).toBeLessThan(1);
+    await expect(tiltDown).toBeDisabled();
+    await expect(tiltUp).toBeEnabled();
+
+    await tiltUp.click();
+    await tiltUp.click();
+    await expectPitch(page, 20);
+    // Pressing Tilt up while the reset is still easing builds on the angle on
+    // screen. The reset goal (0°) must not become the base: that would drop the
+    // camera below the angle it had already reached before stepping up. Both
+    // presses are issued in one page task so the step genuinely lands while the
+    // reset is in flight; a separate Playwright click waits for actionability
+    // long enough for the 700 ms ease to finish.
+    const livePitch = await page.evaluate(() => {
+      const controls = [...document.querySelectorAll<HTMLButtonElement>('button.map-control')];
+      const byLabel = (label: string) => controls.find((button) => button.getAttribute('aria-label') === label);
+      byLabel('Reset north and tilt')?.click();
+      const live = (window as unknown as { __nightmap?: { getPitch(): number } }).__nightmap?.getPitch() ?? 0;
+      byLabel('Tilt up')?.click();
+      return live;
+    });
+    expect(livePitch).toBeGreaterThan(15);
+    await expect
+      .poll(async () => (await camera(page)).pitch, { timeout: 15_000 })
+      .toBeGreaterThanOrEqual(livePitch - 0.5);
+    await expect.poll(async () => (await camera(page)).pitch, { timeout: 15_000 }).toBeGreaterThan(livePitch + 5);
+    await expect.poll(async () => Math.abs((await camera(page)).bearing)).toBeLessThan(1);
+
+    // The angle chip carries the same reset as one action. A tilt step that is
+    // still in flight must not re-apply its target once the view is flat again.
+    await tiltUp.click();
+    await tiltUp.click();
+    await tiltUp.click();
+    await page.getByTestId('reset-camera').click();
+    await expectPitch(page, 0);
+    await expect.poll(async () => Math.abs((await camera(page)).bearing)).toBeLessThan(1);
+    await expect(page.getByTestId('reset-camera')).toHaveCount(0);
+    await page.waitForTimeout(1400);
+    expect(Math.abs((await camera(page)).pitch)).toBeLessThan(0.5);
+  });
+
+  test('a drag takes over from a pending tilt and controls keep a manipulation touch action', async ({ page }) => {
+    await openMap(page);
+    const tiltUp = page.getByRole('button', { name: 'Tilt up' });
+    // Rapid presses of the tilt pair must register as presses, never as a
+    // double-tap zoom or a delayed click.
+    expect(await tiltUp.evaluate((element) => getComputedStyle(element).touchAction)).toBe('manipulation');
+
+    await tiltUp.click();
+    // Take the camera over with a pitch drag before the step lands. The
+    // guaranteed-arrival timer must not pull it back to the step's target.
+    const box = (await page.locator('.map-canvas').boundingBox())!;
+    await page.mouse.move(box.x + box.width / 2, box.y + box.height * 0.5);
+    await page.keyboard.down('Control');
+    await page.mouse.down();
+    await page.mouse.move(box.x + box.width / 2, box.y + box.height * 0.5 + 140, { steps: 12 });
+    await page.mouse.up();
+    await page.keyboard.up('Control');
+
+    const dragged = (await camera(page)).pitch;
+    expect(dragged).toBeLessThan(8);
+    await page.waitForTimeout(1400);
+    const settled = (await camera(page)).pitch;
+    expect(settled).toBeLessThan(dragged + 1);
+    expect(settled).toBeLessThan(5);
   });
 
   test('terrain relief and building geometry are fetched, and reported honestly', async ({ page }) => {
@@ -165,7 +295,7 @@ test.describe('Scenario J — see the city in three dimensions', () => {
       'Toggle satellite imagery',
       'Street-level imagery',
       'Reset north and tilt',
-      'Realign to my GPS location',
+      'Follow my GPS location',
       'Layers',
       'Map legend',
     ]) {
@@ -173,6 +303,84 @@ test.describe('Scenario J — see the city in three dimensions', () => {
     }
     await expect(page.locator('.mini-map-widget')).toBeVisible();
     await expect(page.locator('.mini-map-canvas canvas')).toBeVisible();
+
+    type OverviewMap = {
+      isStyleLoaded(): boolean;
+      getLayer(id: string): unknown;
+      queryRenderedFeatures(options: { layers: string[] }): unknown[];
+      getStyle(): {
+        layers: Array<{ id: string; paint?: Record<string, unknown> }>;
+        sources: Record<string, { data?: { geometry?: { coordinates?: number[][][] } } }>;
+      };
+    };
+    await expect
+      .poll(() =>
+        page.evaluate(() => {
+          const overview = (window as unknown as { __nightmapOverview?: OverviewMap }).__nightmapOverview;
+          if (!overview?.isStyleLoaded()) return false;
+          return [
+            'coverage-outside-dim',
+            'coverage-footprint-fill',
+            'coverage-footprint-line',
+            'main-map-extent-fill',
+            'main-map-extent-line',
+          ].every((id) => Boolean(overview.getLayer(id)));
+        }),
+      )
+      .toBe(true);
+
+    const overviewLayers = await page.evaluate(() => {
+      const overview = (window as unknown as { __nightmapOverview?: OverviewMap }).__nightmapOverview!;
+      const style = overview.getStyle();
+      const mask = style.sources['coverage-mask'].data?.geometry?.coordinates ?? [];
+      return {
+        order: style.layers
+          .map((layer) => layer.id)
+          .filter((id) => [
+            'coverage-outside-dim',
+            'coverage-footprint-fill',
+            'coverage-footprint-line',
+            'main-map-extent-fill',
+            'main-map-extent-line',
+          ].includes(id)),
+        maskRings: mask.length,
+        extractHole: mask[1],
+        dim: style.layers.find((layer) => layer.id === 'coverage-outside-dim')?.paint,
+      };
+    });
+    expect(overviewLayers.order).toEqual([
+      'coverage-outside-dim',
+      'coverage-footprint-fill',
+      'coverage-footprint-line',
+      'main-map-extent-fill',
+      'main-map-extent-line',
+    ]);
+    expect(overviewLayers.maskRings).toBe(2);
+    expect(overviewLayers.extractHole).toEqual([
+      [-122.429, 37.7585],
+      [-122.3905, 37.7585],
+      [-122.3905, 37.7975],
+      [-122.429, 37.7975],
+      [-122.429, 37.7585],
+    ]);
+    expect(overviewLayers.dim).toMatchObject({
+      'fill-color': '#050806',
+      'fill-opacity': 0.62,
+    });
+
+    // The layers must actually paint, not merely exist in the style: the dim
+    // mask and amber footprint are the visual explanation of blank main-map
+    // ground.
+    await expect
+      .poll(() =>
+        page.evaluate(() => {
+          const overview = (window as unknown as { __nightmapOverview?: OverviewMap }).__nightmapOverview!;
+          return ['coverage-outside-dim', 'coverage-footprint-line'].every(
+            (id) => overview.queryRenderedFeatures({ layers: [id] }).length > 0,
+          );
+        }),
+      )
+      .toBe(true);
   });
 
 });

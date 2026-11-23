@@ -9,7 +9,9 @@ import { formatDistance } from '../../domain/geo';
 import { MESSAGE_UNLOCK_RADIUS_M, messageMarkerState } from '../../domain/messages';
 import { CATEGORY_BY_ID, SERVICE_TYPE_LABELS } from '../../domain/categories';
 import { FRICTION_KIND_LABELS, frictionFor } from '../../domain/friction';
-import { EmptyState, EvidencePill, MetaRow, OpenState, SourceDetails, CategoryMark, PathIcon } from '../ui';
+import { EmptyState, EvidencePill, MetaRow, OpenState, OutsideCoverageTag, SourceDetails, CategoryMark, PathIcon } from '../ui';
+import { outsideCoverageInfo } from '../../map/coverage';
+import { COVERAGE_BBOX } from '../../map/style';
 import type { ComposeTarget } from '../fieldnotes/FieldnoteComposer';
 import {
   REPORT_ISSUES,
@@ -148,6 +150,7 @@ export function PlaceInspector({ placeId, onClose, onComposeNote }: Props) {
   }
 
   const view = buildPlaceView(place, dataset, state);
+  const outsideCoverage = outsideCoverageInfo(place.geometry.coordinates, COVERAGE_BBOX);
   const evidence = privateObservation ? {
     ...view.evidence, tone: 'unknown' as const, label: 'Private · unverified',
     detail: 'Private observation stored on this device; not an accepted or published record.',
@@ -211,6 +214,7 @@ export function PlaceInspector({ placeId, onClose, onComposeNote }: Props) {
           {formatDistance(view.distanceMeters, state.settings.units)} from {state.reference.label}
         </p>
         <div className="inspector-status">
+          {outsideCoverage && <OutsideCoverageTag />}
           <EvidencePill evidence={evidence} />
           <OpenState evidence={evidence} />
           {evidence.checkedAt && (

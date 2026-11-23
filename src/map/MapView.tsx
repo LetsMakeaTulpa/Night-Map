@@ -2,7 +2,9 @@ import { useEffect, useRef, useState } from 'react';
 import maplibregl, { type Map as MapLibreMap, type MapGeoJSONFeature } from 'maplibre-gl';
 import 'maplibre-gl/dist/maplibre-gl.css';
 import { buildStyle, COVERAGE_BBOX, EMPTY_FC } from './style';
-import { coverageInAperture, visibleAperture, type ApertureOverlay, type CoverageView } from './aperture';
+import { coverageInAperture, visibleAperture, type ApertureOverlay, type CoverageViewState } from './aperture';
+import { nearestCoveredEdge, outsideCoverageInfo, pointInCoverage, type NearestCoveredEdgeInfo } from './coverage';
+import { FIT_COVERAGE_EVENT, FIT_RECORDS_EVENT } from './viewport-actions';
 import { buildMarkerImages, buildLocationDot } from './icons';
 import { useStore } from '../state/store';
 import { CATEGORIES, SWATCH } from '../domain/categories';
@@ -11,7 +13,7 @@ import { formatDistance } from '../domain/geo';
 import { formatDate } from '../domain/status';
 import { dataset } from '../data';
 import buildingRegistryMeta from '../data/building-registry-meta.json';
-import type { PlaceView } from '../state/selectors';
+import { viewsInBounds, type PlaceView } from '../state/selectors';
 import { LAYERS } from './layers';
 import {
   BUILDINGS_LAYER_ID,
@@ -37,6 +39,7 @@ import {
 } from './incidents';
 import { IncidentCard } from '../features/incidents/IncidentCard';
 import { StreetLevelViewer } from './StreetLevelViewer';
+import { useOnline } from '../features/ui';
 import { cachedBuildingRegistry, loadBuildingRegistry } from '../data/building-registry';
 import { cachedAbandonedBuildings, loadAbandonedBuildings } from '../data/abandoned-buildings';
 import type { AbandonedBuildingFile, BuildingRegistry } from '../domain/types';
@@ -62,6 +65,25 @@ interface BasemapFailure {
 
 type BasemapState = 'loading' | 'ready' | 'failed';
 
+/** The one reason the map currently has no usable picture. */
+type BlankMapState =
+  | 'none'
+  | 'loading'
+  | 'outside'
+  | 'covered'
+  | 'empty-layers'
+  | 'failed-tiles'
+  | 'offline-tiles'
+  | 'failed-style'
+  | 'failed-webgl';
+
+const BLANK_FAILURE_STATE: Record<BasemapFailureCause, BlankMapState> = {
+  webgl: 'failed-webgl',
+  style: 'failed-style',
+  tiles: 'failed-tiles',
+  offline: 'offline-tiles',
+};
+
 /**
  * A basemap that has not painted a road frame by now is treated as failed, not
  * as still loading. The overlay explains the cause instead of leaving a blank
@@ -73,6 +95,37 @@ const BASEMAP_FAILURE_TIMEOUT_MS = 8_000;
 const MAP_MIN_ZOOM = 11.4;
 const MAP_MAX_ZOOM = 18.5;
 const MAX_PITCH = 78;
+const TILT_STEP = 10;
+/** A tilted view only needs the boundary hint once it is this far out. */
+const TILT_EDGE_PITCH = 15;
+const TILT_EDGE_OVERSHOOT_M = 500;
+
+interface CameraGoal {
+  fromPitch: number;
+  pitch: number;
+  bearing: number;
+  /** A tilt step asked for this angle, so the next step compounds on it. */
+  step: boolean;
+}
+
+/** True while the camera still sits inside the sweep a camera goal asked for. */
+function goalInFlight(goal: CameraGoal | null, livePitch: number): goal is CameraGoal {
+  if (!goal) return false;
+  return (
+    livePitch >= Math.min(goal.fromPitch, goal.pitch) - 1 &&
+    livePitch <= Math.max(goal.fromPitch, goal.pitch) + 1
+  );
+}
+
+/**
+ * Consecutive tilt steps compound on each other. Any other camera move — the 3D
+ * preset, the compass, returning to coverage — starts the next step from the
+ * angle the reader can actually see, so pressing Tilt up during a return to plan
+ * view cannot snap the map back down to a shallow angle.
+ */
+function tiltBasePitch(livePitch: number, goal: CameraGoal | null): number {
+  return goalInFlight(goal, livePitch) && goal.step ? goal.pitch : livePitch;
+}
 
 const SOURCE_RETRIEVED_DATES = [...new Set(dataset.data.sources.map((source) => source.retrievedAt))].sort();
 const SOURCE_RETRIEVED_RANGE =
@@ -105,9 +158,22 @@ const MAP_PADDING = () => {
 };
 
 const TERRAIN_SOURCE_ID = 'terrain';
+const COARSE_TERRAIN_SOURCE_ID = 'terrainCoarse';
 /** Terrain displacement uses the elevation model at its actual vertical scale. */
 const TERRAIN_EXAGGERATION = 1.0;
 const PITCH_3D = 55;
+const SHADE_LAYER_ID = 'hillshade';
+const COARSE_SHADE_LAYER_ID = 'hillshade-coarse';
+/**
+ * Past this pitch the visible ground spans kilometres, so both the terrain mesh
+ * and the hillshade read the coarse DEM (z13): a handful of tiles instead of
+ * four times as many fine ones.
+ */
+const COARSE_DEM_PITCH = 50;
+/** How often a followed camera re-checks that it is still centred on the fix. */
+const GPS_SNAP_INTERVAL_MS = 4_000;
+/** Below this the camera is treated as already centred, so it does not twitch. */
+const GPS_SNAP_MIN_MOVE_M = 3;
 
 /**
  * Surfaces that sit above the canvas and hide map rather than merely decorate
@@ -123,6 +189,29 @@ const COVERAGE_OCCLUDERS: ReadonlyArray<{ selector: string; edge: ApertureOverla
   { selector: '.sheet', edge: 'bottom' },
   { selector: '.mobile-nav', edge: 'bottom' },
 ];
+
+/** Layers that can paint above the always-present land and water fill. */
+const MAP_CONTENT_LAYER_IDS = [
+  'streets',
+  'street-labels',
+  'parks',
+  'neighbourhoods',
+  'satellite',
+  'terrain',
+  'buildings-3d',
+  'transit-lines',
+  'transit-stops',
+  'resources',
+  'saved',
+  'observations',
+  'private-messages',
+  'calls-recent',
+  'maintenance',
+  'cases-311',
+  'abandoned-buildings',
+  'building-registry',
+  'landmarks',
+] as const;
 
 /** Pixel distance from a tap to a line segment in the projected map. */
 function distanceToSegment(
@@ -155,8 +244,13 @@ export function MapView({ views, onOpenLayers }: MapViewProps) {
   const mapRef = useRef<MapLibreMap | null>(null);
   const overviewContainerRef = useRef<HTMLDivElement | null>(null);
   const overviewMapRef = useRef<MapLibreMap | null>(null);
+  const coveragePanelRef = useRef<HTMLElement | null>(null);
   const coveragePanelContainerRef = useRef<HTMLDivElement | null>(null);
   const coveragePanelMapRef = useRef<MapLibreMap | null>(null);
+  /** The Details control that opened the panel, so focus can return to it. */
+  const coverageDetailsTriggerRef = useRef<HTMLButtonElement | null>(null);
+  const coveragePanelWasOpen = useRef(false);
+  const online = useOnline();
   const [ready, setReady] = useState(false);
   // Distinguishes "the style parsed" from "there is a street grid to look at."
   // The overlay stays up until the roads source is loaded and a road frame has
@@ -165,7 +259,12 @@ export function MapView({ views, onOpenLayers }: MapViewProps) {
   const basemapReadyRef = useRef(false);
   const [basemapFailure, setBasemapFailure] = useState<BasemapFailure | null>(null);
   const [mapAttempt, setMapAttempt] = useState(0);
-  const [coverageView, setCoverageView] = useState<CoverageView>('inside');
+  const [coverageView, setCoverageView] = useState<CoverageViewState>('inside');
+  const [nearestEdge, setNearestEdge] = useState<NearestCoveredEdgeInfo | null>(null);
+  /** How far the furthest visible corner reaches beyond the extract, in metres. */
+  const [tiltOvershoot, setTiltOvershoot] = useState(0);
+  /** The view includes sky, so its top corners no longer describe the ground. */
+  const [skyVisible, setSkyVisible] = useState(false);
   const [clock, setClock] = useState(() => Date.now());
   const [legendOpen, setLegendOpen] = useState(false);
   const [coveragePanelOpen, setCoveragePanelOpen] = useState(false);
@@ -293,6 +392,18 @@ export function MapView({ views, onOpenLayers }: MapViewProps) {
     const updateCoverage = () => {
       coverageFrame = 0;
       if (mapRef.current !== map) return;
+      // Filters still need a camera view to count records in, even when a
+      // panel hides every pixel of the map. The full canvas is the fallback;
+      // the layout notice, not the boundary, explains the hidden map.
+      const setViewportFromCanvas = () => {
+        const bounds = map.getBounds();
+        actions.setViewportBounds([
+          bounds.getWest(),
+          bounds.getSouth(),
+          bounds.getEast(),
+          bounds.getNorth(),
+        ]);
+      };
       // The notice is for a viewport with no mapped ground in it. `getBounds()`
       // includes the canvas behind the workspace panel, the inspector and the
       // phone dock, so measure the aperture a reader can actually see first:
@@ -304,26 +415,98 @@ export function MapView({ views, onOpenLayers }: MapViewProps) {
           overlays.push({ box: element.getBoundingClientRect(), edge });
         }
       }
-      const aperture = visibleAperture(canvas, overlays);
-      const points: Array<[number, number]> = aperture
-        ? [
-            [aperture.left, aperture.top],
-            [aperture.right, aperture.top],
-            [aperture.right, aperture.bottom],
-            [aperture.left, aperture.bottom],
-          ]
-        : [
-            [0, 0],
-            [canvas.width, 0],
-            [canvas.width, canvas.height],
-            [0, canvas.height],
-          ];
+      const mapCentre = map.getCenter();
+      setNearestEdge(nearestCoveredEdge([mapCentre.lng, mapCentre.lat], COVERAGE_BBOX));
+      const measurement = visibleAperture(canvas, overlays);
+      if (measurement.fullyHidden) {
+        // A panel or the phone sheet left no visible map. Sampling the hidden
+        // canvas used to report "outside coverage" even though the camera had
+        // not moved, so keep the last covered view and let the layout notice
+        // explain what happened.
+        setViewportFromCanvas();
+        setCoverageView('hidden');
+        setTiltOvershoot(0);
+        setSkyVisible(false);
+        return;
+      }
+      if (!measurement.aperture) return;
+      const aperture = measurement.aperture;
+      const points: Array<[number, number]> = [
+        [aperture.left, aperture.top],
+        [aperture.right, aperture.top],
+        [aperture.right, aperture.bottom],
+        [aperture.left, aperture.bottom],
+      ];
       const corners = points.map((point) => {
         const position = map.unproject(point);
         return [position.lng, position.lat] as const;
       });
       const view = coverageInAperture(corners, COVERAGE_BBOX);
-      if (view !== 'outside' && basemapReadyRef.current) {
+      // A camera pitched far enough to include sky cannot place its top
+      // corners: unprojection mirrors them behind the camera and the quad
+      // flips. The map's horizon-aware bounds still describe the ground on
+      // screen, so the tilt hint measures against those instead of the quad.
+      const bearingRad = (map.getBearing() * Math.PI) / 180;
+      const topMidLng = (corners[0][0] + corners[1][0]) / 2;
+      const topMidLat = (corners[0][1] + corners[1][1]) / 2;
+      const bottomMidLng = (corners[3][0] + corners[2][0]) / 2;
+      const bottomMidLat = (corners[3][1] + corners[2][1]) / 2;
+      const showsSky =
+        (topMidLng - bottomMidLng) * Math.sin(bearingRad) +
+          (topMidLat - bottomMidLat) * Math.cos(bearingRad) <
+        0;
+      const mapBounds = map.getBounds();
+      const reach: ReadonlyArray<readonly [number, number]> = showsSky
+        ? [
+            [mapBounds.getWest(), mapBounds.getSouth()],
+            [mapBounds.getEast(), mapBounds.getSouth()],
+            [mapBounds.getEast(), mapBounds.getNorth()],
+            [mapBounds.getWest(), mapBounds.getNorth()],
+          ]
+        : corners;
+      // The far edge of a tilted view is where the boundary stops mattering, so
+      // measure the furthest visible corner past the extract.
+      const overshoot = reach.reduce((furthest, corner) => {
+        const outside = outsideCoverageInfo(corner, COVERAGE_BBOX);
+        return outside ? Math.max(furthest, outside.distanceMeters) : furthest;
+      }, 0);
+      // Rounded so the readout is stable across small pans.
+      setTiltOvershoot(Math.round(overshoot / 100) * 100);
+      setSkyVisible(showsSky);
+      // A blank visible aperture is not proof that the camera left the data
+      // area. When panels cover the only mapped ground, the full canvas still
+      // contains coverage, so this is a layout state rather than the boundary.
+      const canvasCorners = (
+        [
+          [0, 0],
+          [canvas.width, 0],
+          [canvas.width, canvas.height],
+          [0, canvas.height],
+        ] as Array<[number, number]>
+      ).map((point) => {
+        const position = map.unproject(point);
+        return [position.lng, position.lat] as const;
+      });
+      if (view === 'outside' && coverageInAperture(canvasCorners, COVERAGE_BBOX) !== 'outside') {
+        setViewportFromCanvas();
+        setCoverageView('hidden');
+        setTiltOvershoot(0);
+        setSkyVisible(false);
+        return;
+      }
+      const lngs = corners.map((corner) => corner[0]);
+      const lats = corners.map((corner) => corner[1]);
+      actions.setViewportBounds([
+        Math.min(...lngs),
+        Math.min(...lats),
+        Math.max(...lngs),
+        Math.max(...lats),
+      ]);
+      // A tilted camera that reaches far past the boundary is the view the
+      // reader wants to leave, so it must not become its own recovery target.
+      const tiltReachesBeyond =
+        map.getPitch() >= TILT_EDGE_PITCH && overshoot >= TILT_EDGE_OVERSHOOT_M;
+      if ((view === 'inside' || view === 'partial') && !tiltReachesBeyond && basemapReadyRef.current) {
         // Keep the view that still had mapped ground in it. Return should put
         // the reader back where they left off, not fit the whole extract.
         const centre = map.getCenter();
@@ -433,12 +616,31 @@ export function MapView({ views, onOpenLayers }: MapViewProps) {
   }, [mapAttempt]);
 
 
-  // Small orientation map: a separate, lightweight basemap with the current
-  // main-map extent outlined. Clicking it recentres the primary map.
+  // Small orientation map: a separate, lightweight basemap that also shows the
+  // installed extract, so blank main-map ground reads as "beyond the boundary"
+  // rather than "failed tiles". Clicking it recentres the primary map.
   useEffect(() => {
     const main = mapRef.current;
     const container = overviewContainerRef.current;
     if (!ready || !basemapReady || !main || !container || overviewMapRef.current) return;
+
+    const [coverWest, coverSouth, coverEast, coverNorth] = COVERAGE_BBOX;
+    const footprintRing: Array<[number, number]> = [
+      [coverWest, coverSouth],
+      [coverEast, coverSouth],
+      [coverEast, coverNorth],
+      [coverWest, coverNorth],
+      [coverWest, coverSouth],
+    ];
+    // A world-sized fill with the extract cut out dims every area the main map
+    // cannot draw. The hole winds opposite the exterior so the fill renders.
+    const outsideRing: Array<[number, number]> = [
+      [-180, -85],
+      [180, -85],
+      [180, 85],
+      [-180, 85],
+      [-180, -85],
+    ];
 
     let active = true;
     const overview = new maplibregl.Map({
@@ -459,6 +661,9 @@ export function MapView({ views, onOpenLayers }: MapViewProps) {
       doubleClickZoom: false,
     });
     overviewMapRef.current = overview;
+    if (import.meta.env.DEV || navigator.webdriver) {
+      (window as unknown as { __nightmapOverview?: MapLibreMap }).__nightmapOverview = overview;
+    }
 
     const syncExtent = () => {
       if (!active || !overview.isStyleLoaded()) return;
@@ -487,21 +692,57 @@ export function MapView({ views, onOpenLayers }: MapViewProps) {
 
     overview.once('load', () => {
       if (!active) return;
+      overview.addSource('coverage-mask', {
+        type: 'geojson',
+        data: {
+          type: 'Feature',
+          properties: {},
+          geometry: { type: 'Polygon', coordinates: [outsideRing, footprintRing] },
+        },
+      });
+      overview.addSource('coverage-footprint', {
+        type: 'geojson',
+        data: {
+          type: 'Feature',
+          properties: {},
+          geometry: { type: 'Polygon', coordinates: [footprintRing] },
+        },
+      });
       overview.addSource('main-map-extent', {
         type: 'geojson',
         data: { type: 'FeatureCollection', features: [] },
+      });
+      // Paint order: dim outside, mark the extract, then the live viewport on
+      // top so the current view is never hidden by the boundary treatment.
+      overview.addLayer({
+        id: 'coverage-outside-dim',
+        type: 'fill',
+        source: 'coverage-mask',
+        paint: { 'fill-color': '#050806', 'fill-opacity': 0.62, 'fill-antialias': false },
+      });
+      overview.addLayer({
+        id: 'coverage-footprint-fill',
+        type: 'fill',
+        source: 'coverage-footprint',
+        paint: { 'fill-color': '#E0A458', 'fill-opacity': 0.1 },
+      });
+      overview.addLayer({
+        id: 'coverage-footprint-line',
+        type: 'line',
+        source: 'coverage-footprint',
+        paint: { 'line-color': '#F0C674', 'line-width': 1.5, 'line-dasharray': [3, 2] },
       });
       overview.addLayer({
         id: 'main-map-extent-fill',
         type: 'fill',
         source: 'main-map-extent',
-        paint: { 'fill-color': '#E0A458', 'fill-opacity': 0.14 },
+        paint: { 'fill-color': '#F2EDE2', 'fill-opacity': 0.12 },
       });
       overview.addLayer({
         id: 'main-map-extent-line',
         type: 'line',
         source: 'main-map-extent',
-        paint: { 'line-color': '#F0C674', 'line-width': 2 },
+        paint: { 'line-color': '#F2EDE2', 'line-width': 1.8 },
       });
       syncExtent();
     });
@@ -532,6 +773,8 @@ export function MapView({ views, onOpenLayers }: MapViewProps) {
       overview.off('mouseleave', onLeave);
       overview.remove();
       overviewMapRef.current = null;
+      const testWindow = window as unknown as { __nightmapOverview?: MapLibreMap };
+      if (testWindow.__nightmapOverview === overview) delete testWindow.__nightmapOverview;
     };
   }, [ready, basemapReady]);
 
@@ -643,6 +886,22 @@ export function MapView({ views, onOpenLayers }: MapViewProps) {
     return () => window.removeEventListener('keydown', onKey);
   }, [coveragePanelOpen]);
 
+  // Details opens a dialog: move focus into it so the panel is not left after
+  // the trigger in the tab order. Closing returns focus to that trigger. A
+  // boundary tap has no Details trigger, so it keeps the canvas focus it had.
+  useEffect(() => {
+    if (coveragePanelOpen) {
+      coveragePanelWasOpen.current = true;
+      if (coverageDetailsTriggerRef.current) coveragePanelRef.current?.focus();
+      return;
+    }
+    if (!coveragePanelWasOpen.current) return;
+    coveragePanelWasOpen.current = false;
+    const trigger = coverageDetailsTriggerRef.current;
+    coverageDetailsTriggerRef.current = null;
+    if (trigger?.isConnected) trigger.focus();
+  }, [coveragePanelOpen]);
+
   // Keep the canvas in sync with filtered data.
   useEffect(() => {
     const map = mapRef.current;
@@ -748,7 +1007,10 @@ export function MapView({ views, onOpenLayers }: MapViewProps) {
         ? [
             {
               type: 'Feature',
-              properties: { label: state.selectedExternal.label },
+              properties: {
+                label: state.selectedExternal.label,
+                note: state.selectedExternal.note ?? '',
+              },
               geometry: { type: 'Point', coordinates: state.selectedExternal.coordinates },
             },
           ]
@@ -807,7 +1069,17 @@ export function MapView({ views, onOpenLayers }: MapViewProps) {
     set(['stops-labels'], state.layers['transit-stops'] && basemapReady);
     set(['landmark-dots'], state.layers.landmarks);
     set(['landmark-labels'], state.layers.landmarks && basemapReady);
-    set(['hillshade'], state.layers.terrain);
+    // Shading is the pitch-dependent part of the DEM budget. Swapping layers
+    // (rather than sources) is the public MapLibre route, and only the visible
+    // layer's tiles are requested.
+    const syncShading = () => {
+      const coarse = map.getPitch() >= COARSE_DEM_PITCH;
+      set([SHADE_LAYER_ID], state.layers.terrain && !coarse);
+      set([COARSE_SHADE_LAYER_ID], state.layers.terrain && coarse);
+    };
+    syncShading();
+    map.on('moveend', syncShading);
+    map.on('pitchend', syncShading);
     set([BUILDINGS_LAYER_ID], state.layers['buildings-3d']);
     set(['cluster-halo'], state.layers.resources);
     set(['places-symbol', 'cluster-count'], state.layers.resources && basemapReady);
@@ -824,8 +1096,10 @@ export function MapView({ views, onOpenLayers }: MapViewProps) {
       map.setPaintProperty('landmark-dots', 'circle-opacity', state.layerOpacity.landmarks ?? 0.75);
       map.setPaintProperty('landmark-labels', 'text-opacity', state.layerOpacity.landmarks ?? 0.75);
     }
-    if (map.getLayer('hillshade')) {
-      map.setPaintProperty('hillshade', 'hillshade-exaggeration', state.layerOpacity.terrain ?? 0.32);
+    for (const layer of [SHADE_LAYER_ID, COARSE_SHADE_LAYER_ID]) {
+      if (map.getLayer(layer)) {
+        map.setPaintProperty(layer, 'hillshade-exaggeration', state.layerOpacity.terrain ?? 0.32);
+      }
     }
 
     // Street names are the most expensive part of a redraw: every frame the
@@ -852,6 +1126,8 @@ export function MapView({ views, onOpenLayers }: MapViewProps) {
     return () => {
       map.off('dragstart', hideStreetLabels);
       map.off('dragend', restoreStreetLabels);
+      map.off('moveend', syncShading);
+      map.off('pitchend', syncShading);
     };
   }, [state.layers, state.layerOpacity, ready, basemapReady]);
 
@@ -862,7 +1138,7 @@ export function MapView({ views, onOpenLayers }: MapViewProps) {
     const map = mapRef.current;
     if (!map || !ready) return;
     const maskVisible = basemapReady && coverageView === 'partial';
-    const labelsVisible = basemapReady && coverageView !== 'inside';
+    const labelsVisible = basemapReady && (coverageView === 'partial' || coverageView === 'outside');
     if (map.getLayer('outside-mask')) {
       map.setLayoutProperty('outside-mask', 'visibility', maskVisible ? 'visible' : 'none');
     }
@@ -972,18 +1248,58 @@ export function MapView({ views, onOpenLayers }: MapViewProps) {
     };
   }, [ready]);
 
+  // Saved views record the camera, so the map reports where it settled after
+  // every move. The store ignores repeats, so this does not churn on pans that
+  // end where they started.
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map || !ready) return;
+    const sync = () => {
+      const centre = map.getCenter();
+      actions.setViewportCamera({
+        center: [centre.lng, centre.lat],
+        zoom: map.getZoom(),
+        pitch: map.getPitch(),
+        bearing: map.getBearing(),
+      });
+    };
+    sync();
+    map.on('moveend', sync);
+    return () => {
+      map.off('moveend', sync);
+    };
+    // The action only writes through setState; re-binding on every store change
+    // would add and remove a listener on each render.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [ready]);
+
   // Terrain is a real displacement of the map surface, so it is switched on
-  // explicitly and switched off completely — never left half-applied.
+  // explicitly and switched off completely — never left half-applied. The mesh
+  // reads the fine DEM on a level camera and the coarse one once the ground on
+  // screen spans kilometres, so a tilted view costs a handful of tiles.
   const terrainOn = Boolean(state.layers.terrain);
   useEffect(() => {
     const map = mapRef.current;
     if (!map || !ready) return;
-    const active = map.getTerrain();
-    if (terrainOn && !active) {
-      map.setTerrain({ source: TERRAIN_SOURCE_ID, exaggeration: TERRAIN_EXAGGERATION });
-    } else if (!terrainOn && active) {
-      map.setTerrain(null);
-    }
+    const sync = () => {
+      const active = map.getTerrain();
+      if (!terrainOn) {
+        if (active) map.setTerrain(null);
+        return;
+      }
+      const wantedSource =
+        map.getPitch() >= COARSE_DEM_PITCH ? COARSE_TERRAIN_SOURCE_ID : TERRAIN_SOURCE_ID;
+      if (active?.source !== wantedSource) {
+        map.setTerrain({ source: wantedSource, exaggeration: TERRAIN_EXAGGERATION });
+      }
+    };
+    sync();
+    map.on('moveend', sync);
+    map.on('pitchend', sync);
+    return () => {
+      map.off('moveend', sync);
+      map.off('pitchend', sync);
+    };
   }, [terrainOn, ready]);
 
   // 3D buildings: three-ish tiles at a time, only where the view reaches.
@@ -1231,6 +1547,7 @@ export function MapView({ views, onOpenLayers }: MapViewProps) {
         return;
       }
       if (boundaryHit) {
+        coverageDetailsTriggerRef.current = null;
         setCoveragePanelOpen(true);
         return;
       }
@@ -1282,13 +1599,54 @@ export function MapView({ views, onOpenLayers }: MapViewProps) {
     lastFocus.current = key;
     const coordinates = selectedPlace?.geometry.coordinates ?? selectedStop?.geometry.coordinates;
     if (!coordinates) return;
+    const outside = outsideCoverageInfo(coordinates, COVERAGE_BBOX);
+    if (outside) {
+      // Selecting a record beyond the extract must not drop the camera onto the
+      // intentionally blank basemap. The record still opens and is labelled.
+      actions.notify(
+        `${selectedPlace?.name ?? selectedStop?.name ?? 'This point'} is outside Night Map coverage, ${formatDistance(outside.distanceMeters, state.settings.units)} from the nearest covered point. The camera stayed inside the amber boundary.`,
+        'warn',
+      );
+      return;
+    }
     map.easeTo({
       center: coordinates,
       zoom: Math.max(map.getZoom(), 16),
       padding: MAP_PADDING(),
       duration: 700,
     });
-  }, [selectedPlace, selectedStop, ready]);
+  }, [selectedPlace, selectedStop, ready, actions, state.settings.units]);
+
+  // Search results that are not place records still move the camera, but only
+  // after the result has been accepted. Outside-coverage results are replaced
+  // by their nearest covered point before they reach the store.
+  const lastExternalFocus = useRef<string | null>(null);
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map || !ready) return;
+    const external = state.selectedExternal;
+    if (!external) {
+      lastExternalFocus.current = null;
+      return;
+    }
+    const key = `${external.label}:${external.coordinates.join(',')}`;
+    if (key === lastExternalFocus.current) return;
+    lastExternalFocus.current = key;
+    const outside = outsideCoverageInfo(external.coordinates, COVERAGE_BBOX);
+    if (outside) {
+      actions.notify(
+        `${external.label} is outside Night Map coverage, ${formatDistance(outside.distanceMeters, state.settings.units)} from the nearest covered point. The camera stayed inside the amber boundary.`,
+        'warn',
+      );
+      return;
+    }
+    map.easeTo({
+      center: external.coordinates,
+      zoom: Math.min(MAP_MAX_ZOOM, Math.max(map.getZoom(), 16)),
+      padding: MAP_PADDING(),
+      duration: 700,
+    });
+  }, [state.selectedExternal, ready, actions, state.settings.units]);
 
   // Session-only location dot. Nothing is persisted.
   useEffect(() => {
@@ -1312,8 +1670,11 @@ export function MapView({ views, onOpenLayers }: MapViewProps) {
     }
   }, [state.userLocation, ready]);
 
-  // While GPS lock is on, every new watch fix recentres the map. The first
-  // follow also moves to street zoom; later fixes preserve the user's zoom.
+  // While GPS lock is on, the visible centre snaps onto the latest fix on every
+  // new reading, and again on a timer: browsers deliver watch fixes unevenly,
+  // so without the timer a walker could stay centred on a minutes-old point.
+  // The first follow also moves to street zoom; later snaps keep the reader's
+  // zoom and angle, and a snap is skipped when the centre is already there.
   useEffect(() => {
     const map = mapRef.current;
     if (!map || !ready) return;
@@ -1323,14 +1684,23 @@ export function MapView({ views, onOpenLayers }: MapViewProps) {
     }
     const location = state.userLocation;
     if (!location || !isFixFresh(location)) return;
-    const firstFollow = !gpsFollowStarted.current;
-    gpsFollowStarted.current = true;
-    map.easeTo({
-      center: location.coordinates,
-      ...(firstFollow ? { zoom: Math.max(map.getZoom(), 16) } : {}),
-      padding: MAP_PADDING(),
-      duration: firstFollow ? 700 : 400,
-    });
+    const target = location.coordinates;
+    const snap = () => {
+      const firstFollow = !gpsFollowStarted.current;
+      gpsFollowStarted.current = true;
+      if (!firstFollow && map.getCenter().distanceTo(new maplibregl.LngLat(target[0], target[1])) < GPS_SNAP_MIN_MOVE_M) {
+        return;
+      }
+      map.easeTo({
+        center: target,
+        ...(firstFollow ? { zoom: Math.max(map.getZoom(), 16) } : {}),
+        padding: MAP_PADDING(),
+        duration: firstFollow ? 700 : 400,
+      });
+    };
+    snap();
+    const timer = window.setInterval(snap, GPS_SNAP_INTERVAL_MS);
+    return () => window.clearInterval(timer);
   }, [ready, state.gpsLocked, state.userLocation]);
 
   // Panning is an explicit request to stop following. Releasing the lock also
@@ -1347,19 +1717,24 @@ export function MapView({ views, onOpenLayers }: MapViewProps) {
     };
   }, [ready, state.gpsLocked, actions]);
 
-  const realignToGps = async () => {
-    const location = await actions.useCurrentLocation();
-    const map = mapRef.current;
-    if (!location || !map) return;
-    map.easeTo({
-      center: location.coordinates,
-      zoom: Math.max(map.getZoom(), 16),
-      padding: MAP_PADDING(),
-      duration: 700,
-    });
+  /**
+   * A single fix leaves the map behind as soon as the reader moves, so this
+   * control starts the live lock: the map snaps onto every later fix until it
+   * is dragged or the control is pressed again.
+   */
+  const realignToGps = () => {
+    if (state.gpsLocked) {
+      actions.stopGpsLock();
+      return;
+    }
+    actions.startGpsLock();
   };
 
   const stopCount = views.length;
+  const inViewCount = viewsInBounds(views, state.viewportBounds).length;
+  const fitTargetCount = views.filter((view) =>
+    pointInCoverage(view.place.geometry.coordinates, COVERAGE_BBOX),
+  ).length;
   const is3d = camera.pitch > 4;
 
   /**
@@ -1369,38 +1744,117 @@ export function MapView({ views, onOpenLayers }: MapViewProps) {
    * looking broken. So the target is re-applied once if the ease did not finish.
    */
   const cameraRequest = useRef(0);
-  const moveCamera = (target: { pitch: number; bearing: number }) => {
+  /**
+   * The camera goal still in flight: the pitch it started from, the pitch and
+   * bearing it asked for, and whether a tilt step asked for it. map.getPitch()
+   * measures an ease that is still running, so two quick presses would both
+   * start from the same half-raised angle. Carrying the bearing keeps a
+   * rotation that is under way: a tilt press must not freeze the compass
+   * halfway back to north.
+   */
+  const pendingCamera = useRef<CameraGoal | null>(null);
+  const moveCamera = (target: { pitch: number; bearing?: number }, step = false) => {
     const map = mapRef.current;
     if (!map) return;
     const request = ++cameraRequest.current;
-    map.easeTo({ ...target, duration: 700, padding: MAP_PADDING() });
+    const bearing = target.bearing ?? map.getBearing();
+    pendingCamera.current = {
+      fromPitch: Math.round(map.getPitch()),
+      pitch: target.pitch,
+      bearing,
+      step,
+    };
+    map.easeTo({ pitch: target.pitch, bearing, duration: 700, padding: MAP_PADDING() });
     window.setTimeout(() => {
       if (cameraRequest.current !== request) return;
       const live = mapRef.current;
       if (!live) return;
       if (Math.abs(live.getPitch() - target.pitch) > 0.5) live.setPitch(target.pitch);
-      if (Math.abs(live.getBearing() - target.bearing) > 0.5) live.setBearing(target.bearing);
+      if (Math.abs(live.getBearing() - bearing) > 0.5) live.setBearing(bearing);
+      // The move has landed. A later step starts from the camera itself, so a
+      // stale goal cannot revive after the reader has dragged the map.
+      pendingCamera.current = null;
     }, 1100);
+  };
+
+  // A drag takes over from a goal that is still being applied; without this the
+  // guaranteed-arrival timer above would pull the map back under the finger.
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map || !ready) return;
+    const cancel = () => {
+      cameraRequest.current += 1;
+      pendingCamera.current = null;
+    };
+    map.on('dragstart', cancel);
+    return () => {
+      map.off('dragstart', cancel);
+    };
+  }, [ready]);
+
+  // Recalling a saved view that carries a camera restores that framing once per
+  // recall. The request counter retires any tilt step still in flight, so the
+  // restored view cannot be pulled back by a late arrival timer.
+  useEffect(() => {
+    const map = mapRef.current;
+    const restore = state.cameraRestore;
+    if (!map || !ready || !restore) return;
+    cameraRequest.current += 1;
+    pendingCamera.current = null;
+    map.easeTo({
+      center: restore.pose.center,
+      zoom: restore.pose.zoom,
+      pitch: restore.pose.pitch,
+      bearing: restore.pose.bearing,
+      duration: 700,
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [state.cameraRestore, ready]);
+
+  /**
+   * One action back to a level view facing north. A tilt step that has not
+   * landed yet must not re-apply its angle afterwards, so its request is
+   * retired and its goal cleared before the reset goal is installed.
+   */
+  const resetView = () => {
+    cameraRequest.current += 1;
+    pendingCamera.current = null;
+    moveCamera({ pitch: 0, bearing: 0 });
   };
 
   const toggle3d = () => {
     const map = mapRef.current;
     if (!map) return;
     if (is3d) {
-      moveCamera({ pitch: 0, bearing: 0 });
+      resetView();
       return;
     }
     // Tilting only looks three-dimensional with the two layers that carry the
     // third dimension, so they are switched on together — and named out loud.
     if (!state.layers.terrain) actions.setLayer('terrain', true);
     if (!state.layers['buildings-3d']) actions.setLayer('buildings-3d', true);
-    moveCamera({ pitch: PITCH_3D, bearing: map.getBearing() });
+    moveCamera({ pitch: PITCH_3D }, true);
     actions.notify(
       '3D view on. Terrain relief is rendered at true vertical scale (×1); building heights come from OpenStreetMap tags where available and are estimated elsewhere.',
     );
   };
 
-  const resetNorth = () => moveCamera({ pitch: 0, bearing: 0 });
+  const resetNorth = () => resetView();
+
+  /** Tilt without a modifier gesture: a trackpad or right-click drag is not discoverable. */
+  const tiltBy = (delta: number) => {
+    const map = mapRef.current;
+    if (!map) return;
+    const live = Math.round(map.getPitch());
+    const goal = pendingCamera.current;
+    const pitch = Math.max(0, Math.min(MAX_PITCH, tiltBasePitch(live, goal) + delta));
+    if (pitch === live) return;
+    // Carry an unfinished rotation with the tilt; otherwise keep the current bearing.
+    moveCamera({ pitch, bearing: goalInFlight(goal, live) ? goal.bearing : map.getBearing() }, true);
+  };
+
+  /** Where a step starts: the goal of an unfinished step, else the live angle. */
+  const tiltBase = tiltBasePitch(camera.pitch, pendingCamera.current);
 
   const openStreetLevel = () => {
     const centre = mapRef.current?.getCenter();
@@ -1414,7 +1868,15 @@ export function MapView({ views, onOpenLayers }: MapViewProps) {
     const saved = lastCoveredCamera.current;
     if (saved) {
       // Restore the exact view that last showed mapped ground, including its
-      // zoom and the panel-aware padding it was framed with.
+      // zoom and the panel-aware padding it was framed with. A tilt compensation
+      // still in flight must not land on top of the restored camera.
+      cameraRequest.current += 1;
+      pendingCamera.current = {
+        fromPitch: Math.round(map.getPitch()),
+        pitch: saved.pitch,
+        bearing: saved.bearing,
+        step: false,
+      };
       map.setPadding(saved.padding);
       map.easeTo({
         center: saved.center,
@@ -1425,6 +1887,8 @@ export function MapView({ views, onOpenLayers }: MapViewProps) {
       });
       return;
     }
+    cameraRequest.current += 1;
+    pendingCamera.current = null;
     // No covered view has been recorded yet: land on the nearest point inside
     // the extract at the current zoom instead of zooming out to the whole city.
     const centre = map.getCenter();
@@ -1439,6 +1903,15 @@ export function MapView({ views, onOpenLayers }: MapViewProps) {
     });
   };
 
+  const toggleCoveragePanel = (trigger: HTMLButtonElement) => {
+    if (coveragePanelOpen) {
+      setCoveragePanelOpen(false);
+      return;
+    }
+    coverageDetailsTriggerRef.current = trigger;
+    setCoveragePanelOpen(true);
+  };
+
   const retryBasemap = () => {
     basemapReadyRef.current = false;
     setBasemapReady(false);
@@ -1446,6 +1919,23 @@ export function MapView({ views, onOpenLayers }: MapViewProps) {
     setBasemapFailure(null);
     setCoveragePanelOpen(false);
     setMapAttempt((attempt) => attempt + 1);
+  };
+
+  // An offline tile miss has a recovery action the reader cannot perform by
+  // pressing a disabled button. Rebuild as soon as the connection returns.
+  useEffect(() => {
+    if (!online || basemapFailure?.cause !== 'offline') return;
+    retryBasemap();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [online, basemapFailure]);
+
+  const revealMap = () => {
+    setCoveragePanelOpen(false);
+    actions.selectPlace(null);
+    actions.selectStop(null);
+    actions.selectBuilding(null);
+    actions.setWorkspace('map');
+    actions.setSheet('dismissed');
   };
 
   const showAllCoverage = () => {
@@ -1462,15 +1952,103 @@ export function MapView({ views, onOpenLayers }: MapViewProps) {
     });
   };
 
+  /**
+   * Frame the records that pass the current filters. Private observations are
+   * allowed only when they sit inside the extract: fitting to an outside point
+   * would trade a filter notice for a blank basemap.
+   */
+  const fitToRecords = () => {
+    const map = mapRef.current;
+    if (!map) return;
+    const points = views
+      .filter((view) => pointInCoverage(view.place.geometry.coordinates, COVERAGE_BBOX))
+      .map((view) => view.place.geometry.coordinates);
+    if (points.length === 0) {
+      showAllCoverage();
+      return;
+    }
+    setCoveragePanelOpen(false);
+    map.setPadding({ top: 0, bottom: 0, left: 0, right: 0 });
+    if (points.length === 1) {
+      map.easeTo({ center: points[0], zoom: Math.max(map.getZoom(), 15), duration: 700 });
+      return;
+    }
+    const lngs = points.map((point) => point[0]);
+    const lats = points.map((point) => point[1]);
+    map.fitBounds(
+      [
+        [Math.min(...lngs), Math.min(...lats)],
+        [Math.max(...lngs), Math.max(...lats)],
+      ],
+      { padding: MAP_PADDING(), maxZoom: 15.5, duration: 700 },
+    );
+  };
+
+  useEffect(() => {
+    const onFitRecords = () => fitToRecords();
+    const onFitCoverage = () => showAllCoverage();
+    window.addEventListener(FIT_RECORDS_EVENT, onFitRecords);
+    window.addEventListener(FIT_COVERAGE_EVENT, onFitCoverage);
+    return () => {
+      window.removeEventListener(FIT_RECORDS_EVENT, onFitRecords);
+      window.removeEventListener(FIT_COVERAGE_EVENT, onFitCoverage);
+    };
+    // The filter cue only needs to re-bind when the matching record set moves.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [views]);
+
+  const nearestEdgeLabel = nearestEdge
+    ? `${formatDistance(nearestEdge.distanceMeters, state.settings.units)} ${nearestEdge.direction}`
+    : null;
   const basemapState: BasemapState = basemapReady ? 'ready' : basemapFailure ? 'failed' : 'loading';
-  const showCoverageNotice = basemapState === 'ready' && coverageView === 'outside';
-  const showCoverageEdge = basemapState === 'ready' && coverageView === 'partial';
+  const showMapHidden = basemapState === 'ready' && coverageView === 'hidden';
+  const allMapLayersOff = MAP_CONTENT_LAYER_IDS.every((id) => !state.layers[id]);
+  // An empty layer set is a layer choice before it is a boundary state: even an
+  // outside camera would still be blank after fitting the extract, so recovery
+  // must start by restoring a layer. The boundary notice returns afterwards.
+  const showEmptyLayers = basemapState === 'ready' && !showMapHidden && allMapLayersOff;
+  const showCoverageNotice =
+    basemapState === 'ready' && coverageView === 'outside' && !showEmptyLayers;
+  const showCoverageEdge =
+    basemapState === 'ready' && coverageView === 'partial' && !showEmptyLayers;
+  // Tilting stretches the visible aperture over ground past the extract, so the
+  // partial edge is no longer the whole story. This hint names the angle and
+  // offers the same return, but never moves the camera on its own.
+  // The aperture model still calls a sky-filled view 'inside', so that case
+  // counts as reaching past the boundary as well.
+  const showTiltEdgeHint =
+    basemapState === 'ready' &&
+    !showEmptyLayers &&
+    (coverageView === 'partial' || (skyVisible && coverageView === 'inside')) &&
+    camera.pitch >= TILT_EDGE_PITCH &&
+    tiltOvershoot >= TILT_EDGE_OVERSHOOT_M;
+  const showNoRecordsInView =
+    basemapState === 'ready' &&
+    state.viewportBounds !== null &&
+    coverageView !== 'outside' &&
+    coverageView !== 'hidden' &&
+    !showEmptyLayers &&
+    stopCount > 0 &&
+    inViewCount === 0;
+  const blankState: BlankMapState =
+    basemapState === 'loading'
+      ? 'loading'
+      : basemapFailure
+        ? BLANK_FAILURE_STATE[basemapFailure.cause]
+        : showMapHidden
+          ? 'covered'
+          : showEmptyLayers
+            ? 'empty-layers'
+            : showCoverageNotice
+              ? 'outside'
+              : 'none';
 
   return (
     <div
-      className={`map-stage ${basemapReady ? 'has-minimap' : ''} ${showCoverageNotice ? 'has-coverage-notice' : ''} ${coveragePanelOpen ? 'has-coverage-panel' : ''}`}
+      className={`map-stage ${basemapReady ? 'has-minimap' : ''} ${showCoverageNotice || showTiltEdgeHint ? 'has-coverage-notice' : ''} ${showMapHidden ? 'has-hidden-map' : ''} ${showEmptyLayers ? 'has-empty-layers' : ''} ${coveragePanelOpen ? 'has-coverage-panel' : ''}`}
       aria-busy={basemapState === 'loading'}
       data-basemap-state={basemapState}
+      data-blank-state={blankState}
       data-coverage-view={coverageView}
     >
       <div ref={containerRef} className="map-canvas" role="application" aria-label="Night Map of central San Francisco" />
@@ -1490,8 +2068,14 @@ export function MapView({ views, onOpenLayers }: MapViewProps) {
 
       {basemapReady && (
         <section className="mini-map-widget" aria-label="Map overview">
-          <div className="mini-map-heading"><span>Overview</span><span>Current extent</span></div>
-          <div ref={overviewContainerRef} className="mini-map-canvas" aria-label="Clickable overview map" />
+          <div className="mini-map-heading" title="Amber outline: mapped extract. White box: current map view.">
+            <span>Overview</span><span>Amber = mapped extract</span>
+          </div>
+          <div
+            ref={overviewContainerRef}
+            className="mini-map-canvas"
+            aria-label="Clickable overview map with the mapped extract and current view"
+          />
         </section>
       )}
 
@@ -1514,22 +2098,89 @@ export function MapView({ views, onOpenLayers }: MapViewProps) {
             <h3>{BASEMAP_FAILURE_COPY[basemapFailure.cause].title}</h3>
             <p>{BASEMAP_FAILURE_COPY[basemapFailure.cause].body}</p>
             <p className="map-failed-note">Search, placed lists, saved places and private notes still work.</p>
+            {nearestEdgeLabel && (
+              <p className="map-failed-distance" data-testid="basemap-edge-distance">
+                Nearest covered edge: <strong>{nearestEdgeLabel}</strong>.
+              </p>
+            )}
             {basemapFailure.detail && <p className="map-failed-detail">{basemapFailure.detail}</p>}
-            <button type="button" className="button small" onClick={retryBasemap}>
-              Retry basemap
-            </button>
+            <div className="button-row">
+              <button
+                type="button"
+                className="button small"
+                onClick={retryBasemap}
+                disabled={basemapFailure.cause === 'offline' && !online}
+                data-testid="basemap-retry"
+              >
+                {basemapFailure.cause === 'offline'
+                  ? online
+                    ? 'Retry tiles'
+                    : 'Waiting for connection'
+                  : basemapFailure.cause === 'tiles'
+                    ? 'Retry tiles'
+                    : 'Retry map'}
+              </button>
+              <button
+                type="button"
+                className="button ghost small"
+                aria-haspopup="dialog"
+                aria-expanded={coveragePanelOpen}
+                aria-controls="coverage-panel"
+                onClick={(event) => toggleCoveragePanel(event.currentTarget)}
+                data-testid="basemap-details"
+              >
+                Details
+              </button>
+            </div>
+            {basemapFailure.cause === 'offline' && (
+              <p className="map-failed-note" data-testid="offline-retry-note">
+                {online
+                  ? 'Connection is back. Retrying the street tiles now.'
+                  : 'Night Map will retry automatically when the connection returns.'}
+              </p>
+            )}
           </div>
         </div>
       )}
 
       <div className="map-topline">
-        <span className="map-scale-note is-count">
-          {stopCount} {stopCount === 1 ? 'place' : 'places'} in this filter
+        <span className="map-scale-note is-count" data-testid="map-view-status">
+          {coverageView === 'outside'
+            ? `Outside coverage · 0 of ${stopCount} in view`
+            : coverageView === 'hidden'
+              ? 'Map hidden behind panels'
+              : state.viewportBounds
+                ? `${inViewCount} of ${stopCount} ${stopCount === 1 ? 'place' : 'places'} in view`
+                : `${stopCount} ${stopCount === 1 ? 'place' : 'places'} in this filter`}
         </span>
+        {showNoRecordsInView && (
+          <button
+            type="button"
+            className="map-scale-note map-view-action"
+            onClick={fitTargetCount > 0 ? fitToRecords : showAllCoverage}
+            data-testid={fitTargetCount > 0 ? 'map-fit-records' : 'map-show-coverage'}
+          >
+            {fitTargetCount > 0
+              ? `No records in this view · Zoom to ${fitTargetCount} ${fitTargetCount === 1 ? 'record' : 'records'}`
+              : 'No records in this view · Show coverage'}
+          </button>
+        )}
         {is3d && (
-          <span className="map-scale-note is-3d">
-            tilted {camera.pitch}° · facing {camera.bearing === 0 ? 'north' : `${camera.bearing}°`}
-          </span>
+          <>
+            <span className="map-scale-note is-3d">
+              tilted {camera.pitch}° · facing {camera.bearing === 0 ? 'north' : `${camera.bearing}°`}
+            </span>
+            <button
+              type="button"
+              className="map-scale-note map-view-action"
+              onClick={resetView}
+              title="Return to a flat view facing north"
+              aria-label="Reset to flat and north"
+              data-testid="reset-camera"
+            >
+              Flat &amp; north
+            </button>
+          </>
         )}
         {buildingsOn && (
           <span className="map-scale-note" data-testid="buildings-status">
@@ -1581,19 +2232,110 @@ export function MapView({ views, onOpenLayers }: MapViewProps) {
         )}
       </div>
 
-      {showCoverageEdge && (
+      {showMapHidden && (
+        <div className="map-hidden-notice" role="status" data-testid="map-hidden-notice">
+          <span className="map-hidden-mark" aria-hidden="true">
+            <svg viewBox="0 0 24 24">
+              <path d="M4 5.5h6.5v13H4zM13.5 5.5H20v13h-6.5z" />
+              <path d="m10.5 9 2.5 3-2.5 3" />
+            </svg>
+          </span>
+          <span className="map-hidden-copy">
+            <strong>Close a panel to see the map</strong>
+            <span>
+              The mapped area is behind the open panels right now. Nothing moved, and this is not the edge of
+              coverage.
+            </span>
+          </span>
+          <div className="map-hidden-actions">
+            <button type="button" className="button small" onClick={revealMap}>
+              Close panels
+            </button>
+          </div>
+        </div>
+      )}
+
+      {showEmptyLayers && (
+        <div className="map-hidden-notice is-empty-layers" role="status" data-testid="map-empty-layers">
+          <span className="map-hidden-mark" aria-hidden="true">
+            <svg viewBox="0 0 24 24">
+              <path d="m12 3 9 5-9 5-9-5 9-5Z" />
+              <path d="m3 12 9 5 9-5M3 16l9 5 9-5" />
+            </svg>
+          </span>
+          <span className="map-hidden-copy">
+            <strong>No map layers are on</strong>
+            <span>
+              Every layer is switched off, so the map shows only its background. This is a layer choice, not the
+              edge of coverage.
+            </span>
+          </span>
+          <div className="map-hidden-actions">
+            <button type="button" className="button small" onClick={() => actions.applyPreset('essentials')}>
+              Show essentials
+            </button>
+            <button type="button" className="button ghost small" onClick={onOpenLayers}>
+              Choose layers
+            </button>
+          </div>
+        </div>
+      )}
+
+      {showCoverageEdge && !showTiltEdgeHint && (
         <button
           type="button"
           className={`coverage-edge-chip ${coveragePanelOpen ? 'is-open' : ''}`}
           aria-haspopup="dialog"
           aria-expanded={coveragePanelOpen}
-          onClick={() => setCoveragePanelOpen((open) => !open)}
+          onClick={(event) => toggleCoveragePanel(event.currentTarget)}
           data-testid="coverage-edge-chip"
         >
           <span className="coverage-edge-dash" aria-hidden="true" />
           Edge of coverage
           <span className="coverage-edge-more">Details</span>
         </button>
+      )}
+
+      {showTiltEdgeHint && (
+        <div className="coverage-notice coverage-tilt-notice" role="status" data-testid="coverage-tilt-hint">
+          <span className="coverage-notice-mark" aria-hidden="true">
+            <svg viewBox="0 0 24 24">
+              <path d="M4 16.5 12 6l8 10.5" />
+              <path d="M3 20h18" />
+            </svg>
+          </span>
+          <span className="coverage-notice-copy">
+            <strong>Tilt is showing ground beyond the boundary</strong>
+            <span className="coverage-notice-body">
+              This {Math.round(camera.pitch)}° view reaches{' '}
+              <strong>{formatDistance(tiltOvershoot, state.settings.units)}</strong> past the mapped extract.
+              The ground outside the amber boundary is intentionally unmapped.
+            </span>
+          </span>
+          <div className="coverage-notice-actions">
+            <button
+              type="button"
+              className="button ghost small"
+              aria-haspopup="dialog"
+              aria-expanded={coveragePanelOpen}
+              aria-controls="coverage-panel"
+              onClick={(event) => toggleCoveragePanel(event.currentTarget)}
+              data-testid="coverage-tilt-details"
+            >
+              Details
+            </button>
+            <button
+              type="button"
+              className="button small"
+              aria-label="Return to coverage"
+              onClick={returnToCoverage}
+              data-testid="coverage-tilt-return"
+            >
+              <span className="coverage-return-full">Return to coverage</span>
+              <span className="coverage-return-compact">Return</span>
+            </button>
+          </div>
+        </div>
       )}
 
       {showCoverageNotice && (
@@ -1606,11 +2348,27 @@ export function MapView({ views, onOpenLayers }: MapViewProps) {
           </span>
           <span className="coverage-notice-copy">
             <strong>Outside Night Map coverage</strong>
-            <span>
+            <span className="coverage-notice-body">
               Central San Francisco only. Beyond the amber dashed boundary is intentionally unmapped.
             </span>
+            {nearestEdgeLabel && (
+              <span className="coverage-notice-distance" data-testid="coverage-edge-distance">
+                Nearest covered edge: <strong>{nearestEdgeLabel}</strong>
+              </span>
+            )}
           </span>
           <div className="coverage-notice-actions">
+            <button
+              type="button"
+              className="button ghost small"
+              aria-haspopup="dialog"
+              aria-expanded={coveragePanelOpen}
+              aria-controls="coverage-panel"
+              onClick={(event) => toggleCoveragePanel(event.currentTarget)}
+              data-testid="coverage-notice-details"
+            >
+              Details
+            </button>
             <button
               type="button"
               className="button ghost small"
@@ -1636,10 +2394,13 @@ export function MapView({ views, onOpenLayers }: MapViewProps) {
 
       {coveragePanelOpen && (
         <section
+          ref={coveragePanelRef}
+          id="coverage-panel"
           className="coverage-panel"
           role="dialog"
           aria-modal="false"
           aria-labelledby="coverage-panel-title"
+          tabIndex={-1}
           data-testid="coverage-panel"
         >
           <div className="coverage-panel-head">
@@ -1746,10 +2507,32 @@ export function MapView({ views, onOpenLayers }: MapViewProps) {
           onClick={toggle3d}
           aria-pressed={is3d}
           aria-label="3D view"
-          title={`Tilt the map and show terrain and buildings. Two-finger drag or control-drag tilts by hand (max ${78}°).`}
+          title={`Tilt the map and show terrain and buildings. Use Tilt up / Tilt down, or drag with two fingers / control-drag (max ${MAX_PITCH}°).`}
         >
           <CubeIcon />
         </button>
+        <div className="map-control-group" role="group" aria-label="View angle">
+          <button
+            type="button"
+            className="map-control"
+            onClick={() => tiltBy(TILT_STEP)}
+            aria-label="Tilt up"
+            title={`Raise the camera angle by ${TILT_STEP}° (max ${MAX_PITCH}°)`}
+            disabled={tiltBase >= MAX_PITCH}
+          >
+            <TiltUpIcon />
+          </button>
+          <button
+            type="button"
+            className="map-control"
+            onClick={() => tiltBy(-TILT_STEP)}
+            aria-label="Tilt down"
+            title={`Lower the camera angle by ${TILT_STEP}°`}
+            disabled={tiltBase <= 0}
+          >
+            <TiltDownIcon />
+          </button>
+        </div>
         <button
           type="button"
           className={`map-control ${state.layers.satellite ? 'is-active' : ''}`}
@@ -1781,9 +2564,10 @@ export function MapView({ views, onOpenLayers }: MapViewProps) {
         <button
           type="button"
           className={`map-control ${state.gpsLocked ? 'is-active' : ''}`}
-          onClick={() => void realignToGps()}
-          aria-label="Realign to my GPS location"
-          title="Get a fresh GPS fix and centre the map on me"
+          onClick={realignToGps}
+          aria-pressed={state.gpsLocked}
+          aria-label="Follow my GPS location"
+          title="Keep the map centred on every new GPS fix; drag the map or press again to stop"
         >
           <CrosshairIcon />
         </button>
@@ -1980,6 +2764,22 @@ function StreetViewIcon() {
       <path d="M12 3.5a4 4 0 1 0 0 8 4 4 0 0 0 0-8Z" />
       <path d="M5.5 20a6.5 6.5 0 0 1 13 0M12 11.5v4M9.5 15.5h5" />
       <path d="M3 8.5h2M19 8.5h2" />
+    </svg>
+  );
+}
+
+function TiltUpIcon() {
+  return (
+    <svg viewBox="0 0 24 24" aria-hidden="true">
+      <path d="M4 17.5h16M12 14.5V4M7.5 8.5 12 4l4.5 4.5" />
+    </svg>
+  );
+}
+
+function TiltDownIcon() {
+  return (
+    <svg viewBox="0 0 24 24" aria-hidden="true">
+      <path d="M4 17.5h16M12 4v10.5M7.5 10 12 14.5l4.5-4.5" />
     </svg>
   );
 }

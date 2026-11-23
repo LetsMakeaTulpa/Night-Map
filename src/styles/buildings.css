@@ -16,7 +16,9 @@
 
 .building-row {
   display: grid;
-  gap: 3px;
+  grid-template-columns: 56px minmax(0, 1fr);
+  align-items: start;
+  gap: 9px;
   width: 100%;
   padding: 11px 12px;
   text-align: left;
@@ -34,11 +36,48 @@
   border-color: var(--accent);
 }
 
+.building-row-body {
+  display: grid;
+  gap: 3px;
+  min-width: 0;
+}
+
+/* The row's photo is the actual block, not the building. It stays a quiet
+   thumbnail: the address and the record summary still carry the row. */
+.building-thumb {
+  display: grid;
+  place-items: center;
+  align-self: stretch;
+  min-height: 64px;
+  overflow: hidden;
+  color: var(--faint);
+  background: #0a1114;
+  border: var(--border-w-soft) solid var(--line-soft);
+  border-radius: 8px;
+}
+
+.building-thumb img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.building-thumb svg {
+  width: 18px;
+  height: 18px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.6;
+  opacity: 0.7;
+}
+
 .building-row-head {
   display: flex;
+  flex-wrap: wrap;
   align-items: baseline;
   justify-content: space-between;
-  gap: 8px;
+  gap: 4px 8px;
   min-width: 0;
 }
 
