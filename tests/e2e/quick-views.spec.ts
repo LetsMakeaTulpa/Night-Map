@@ -22,7 +22,7 @@ test('quick views show match counts and an empty view offers a fit to matches', 
   await openNearby(page, testInfo.project.name);
 
   // Every quick view states what pressing it would show.
-  for (const id of ['essentials', 'after-dark', 'connections', 'scenes']) {
+  for (const id of ['essentials', 'after-dark', 'connections', 'scenes', 'still-running']) {
     await expect(page.getByTestId(`quick-view-count-${id}`)).toHaveText(/^\d+$/);
   }
 
@@ -58,4 +58,37 @@ test('quick views show match counts and an empty view offers a fit to matches', 
   await expect(empty).toHaveCount(0);
   const zoomAfter = await page.evaluate(() => (window as unknown as MapWindow).__nightmap!.getZoom());
   expect(zoomAfter).not.toBeCloseTo(zoomBefore, 1);
+});
+
+test('Still running narrows the stop layer and a stop opens scheduled service', async ({ page }, testInfo) => {
+  test.skip(isMobileProject(testInfo.project.name), 'the sheet covers the stop layer on a phone');
+  await openMap(page);
+  await openNearby(page, testInfo.project.name);
+
+  const chip = page.getByTestId('quick-view-still-running');
+  await expect(chip).toBeVisible();
+  await chip.click();
+  await expect(chip).toHaveAttribute('aria-pressed', 'true');
+  expect(Number((await page.getByTestId('quick-view-count-still-running').innerText()).trim())).toBeGreaterThan(0);
+
+  // Click a rendered stop dot, then read the scheduled service card it opens.
+  const target = await page.evaluate(() => {
+    const map = (window as unknown as { __nightmap?: {
+      queryRenderedFeatures(query: unknown): { geometry: { coordinates: [number, number] } }[];
+      project(coordinates: [number, number]): { x: number; y: number };
+      getContainer(): HTMLElement;
+    } }).__nightmap;
+    const features = map?.queryRenderedFeatures({ layers: ['stops-dots'] }) ?? [];
+    if (!map || features.length === 0) return null;
+    const point = map.project(features[0].geometry.coordinates);
+    const rect = map.getContainer().getBoundingClientRect();
+    return { x: rect.left + point.x, y: rect.top + point.y };
+  });
+  expect(target).not.toBeNull();
+  if (!target) return;
+
+  await page.mouse.click(target.x, target.y);
+  await expect(page.getByTestId('stop-card')).toBeVisible();
+  await expect(page.getByTestId('stop-scheduled')).toContainText('Scheduled data');
+  await expect(page.getByTestId('stop-scheduled')).toContainText('Not live');
 });

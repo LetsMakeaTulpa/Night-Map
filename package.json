@@ -21,6 +21,7 @@
     "data:incidents": "node scripts/fetch-incidents.mjs",
     "data:sfgov": "node scripts/fetch-sfgov.mjs",
     "data:build": "node scripts/build-dataset.mjs",
+    "data:transit-service": "node scripts/build-transit-service.mjs",
     "data:access": "node scripts/build-access-records.mjs",
     "data:validate:incidents": "node scripts/validate-incidents.mjs",
     "data:refresh": "node scripts/refresh-data.mjs"

@@ -5,7 +5,7 @@ import { isQuickViewActive, quickViewPatch } from './discovery-presets';
 const baseline: Filters = {
   categories: [], openNow: false, freeOnly: false, verifiedOnly: false,
   maxWalkMinutes: 0, nearTransit: false, accessibleOnly: false,
-  afterDark: false, query: '',
+  afterDark: false, overnightStops: false, query: '',
 };
 
 describe('discovery quick views', () => {
@@ -38,6 +38,15 @@ describe('discovery quick views', () => {
 
   it('resets conditions that would silently narrow a curated view', () => {
     const patch = quickViewPatch('scenes');
-    expect(patch).toMatchObject({ openNow: false, freeOnly: false, verifiedOnly: false, maxWalkMinutes: 0, nearTransit: false, accessibleOnly: false, afterDark: false });
+    expect(patch).toMatchObject({ openNow: false, freeOnly: false, verifiedOnly: false, maxWalkMinutes: 0, nearTransit: false, accessibleOnly: false, afterDark: false, overnightStops: false });
+  });
+
+  it('switches the Still running view to overnight stops and back off', () => {
+    const filters = { ...baseline, ...quickViewPatch('still-running') };
+    expect(filters.overnightStops).toBe(true);
+    expect(filters.categories).toEqual([]);
+    expect(isQuickViewActive(filters, 'still-running')).toBe(true);
+    // Choosing another view clears the overnight restriction.
+    expect(quickViewPatch('scenes').overnightStops).toBe(false);
   });
 });

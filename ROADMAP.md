@@ -35,6 +35,12 @@ Sources: the project requirements, the working tree, and
 - [x] **Dispatched calls at runtime.** The City CAD feed is queried while the
   layer is open, refreshed every two minutes, filtered for sensitive and
   person-level categories, and snapped to about 40 m.
+- [x] **Reported vacancy and abandonment parcels.** The default-on **Abandoned &
+  vacant buildings** layer plots the 919 located parcels whose DBI records describe
+  a vacant or abandoned condition, with the dossier one click away. The workspace also
+  filters to **Reported vacant / derelict** (2,860 dossiers) and can plot the located
+  matches; search reaches all 3,847, including the 2,043 with no point. It is a record
+  layer, never a confirmed vacancy.
 - [x] **311 snapshot.** Nightly City data, plotted only on request and labelled
   with its computed age rather than presented as live.
 - [x] **Privacy-first local state.** No accounts, analytics or tracking pixels.
@@ -54,6 +60,10 @@ Sources: the project requirements, the working tree, and
   deduplicated, given a status, resolved in the Review queue, and logged.
 - [x] **Library.** Private collections of places, routes and notes, with a
   plain-language privacy and limits tab.
+- [x] **Night service from SFMTA GTFS.** Per-stop routes, median headway and last
+  departure scheduled between 22:00 and 05:00 on a named service date, with an owl
+  flag; the Still running view narrows the stop layer, and each stop card carries the
+  feed dates and the SFMTA derivative notice. Scheduled data, never a live arrival.
 - [x] **Routing, search and offline shell.** Walking routes with failure fallback,
   explicit-request address lookup, saved views, and a precached PWA shell.
 - [x] **Nightly data pipeline.** `npm run data:refresh` refreshes SF open data,
@@ -101,37 +111,39 @@ Sources: the project requirements, the working tree, and
   and the viewport, but no road network, which makes orientation harder at a
   glance.
 
-## Refused
+## Crossed out (not doing)
 
-These are deliberate exclusions, not backlog items.
+Kept as a record rather than deleted; nothing here is a backlog item.
 
-- **Live 911 audio, live CCTV and live police radio.** SFPD radio has been
-  encrypted since 2021, the City publishes no live incident audio, and there is no
-  lawful public live camera feed.
-- **A camera, kiosk or plate-reader map layer.** San Francisco publishes no
-  register of camera positions, and inferred dots would be surveillance. The feed
+- ~~**A live police feed: 911 audio, police radio and camera streams.**~~ San Francisco
+  publishes no lawful public live feed for any of them — SFPD radio has been encrypted
+  since 2021, and the City publishes no live incident audio or camera stream — so this is
+  a missing source, not a refusal to plot police records. Delayed dispatched calls *are*
+  plotted, with sensitive and person-level categories removed.
+- ~~**A camera, kiosk or plate-reader point layer.**~~ The City publishes no register
+  of camera positions, so a dot would be inferred rather than sourced. The feed
   status panels link the official documents instead.
-- **Encampment locations.** The 311 log carries over a thousand encampment cases a
+- ~~**Encampment locations.**~~ The 311 log carries over a thousand encampment cases a
   fortnight; mapping where unhoused people sleep would turn a navigation tool into
   a targeting tool.
-- **Person-level or sensitive incident records.** Categories describing a person's
+- ~~**Person-level or sensitive incident records.**~~ Categories describing a person's
   situation are filtered at build time and again at runtime; addresses and free
   text are discarded.
-- **A confirmed vacant or abandoned-building register.** No such City dataset
-  exists. `Buildings` derives dossiers from DBI records and never labels a
-  building “confirmed vacant.”
-- **Live food-truck locations.** The City publishes permits and a PDF schedule, not
+- ~~**A confirmed vacancy finding.**~~ The map's vacancy/abandonment parcel layer and
+  the `Buildings` dossiers report City records; no dataset confirms that a building
+  is empty today, so nothing is labelled “confirmed vacant.”
+- ~~**Live food-truck locations.**~~ The City publishes permits and a PDF schedule, not
   a live truck feed.
-- **Live injection-supply stock or availability.** No structured live feed exists;
+- ~~**Live injection-supply stock or availability.**~~ No structured live feed exists;
   published schedules and service descriptions are the limit.
-- **Safety, crime or lighting route scores.** The app never labels a street or
+- ~~**Safety, crime or lighting route scores.**~~ The app never labels a street or
   route as “safe” and does not score routes by crime or lighting.
-- **Server-side messaging or geocaches.** There is no server, so a note for
+- ~~**Server-side messaging or geocaches.**~~ There is no server, so a note for
   another person could not be delivered, verified or moderated. Private messages
   are self-addressed, location-locked notes on this device, not a messaging service.
-- **Publishing or sharing notes and messages.** Both are private by default and
+- ~~**Publishing or sharing notes and messages.**~~ Both are private by default and
   there is no publish action.
-- **Recology e-waste and LifeLine enrolment as map markers.** The e-waste site is
+- ~~**Recology e-waste and LifeLine enrolment as map markers.**~~ The e-waste site is
   outside this release's footprint, and no verifiable walk-in LifeLine address is
   published; the app says so instead of guessing.
 

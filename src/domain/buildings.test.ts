@@ -15,6 +15,8 @@ import {
   BUILDING_STATUSES,
   buildingCheckSummary,
   buildingConditionLabel,
+  buildingFilterLabel,
+  buildingMatchesFilter,
   buildingRecordSummary,
   buildingScoreInputs,
   buildingStatusMeta,
@@ -215,6 +217,27 @@ describe('dossier reading in the app', () => {
     expect(filterBuildings([dossier], { query: 'tenderloin', status: 'all' })).toHaveLength(0);
     expect(filterBuildings([dossier], { query: '', status: 'under_demolition' })).toHaveLength(0);
     expect(filterBuildings([dossier], { query: '', status: 'reported_vacant' })).toHaveLength(1);
+  });
+
+  it('groups the two reported-vacancy classes and searches dossiers with no point', () => {
+    const located = makeDossier();
+    const unplotted = makeDossier({
+      id: 'bldg:9999-001',
+      address: '88 Nowhere St',
+      coordinates: null,
+      locationPrecision: 'none',
+      status: 'vacancy_history',
+    });
+    const demolition = makeDossier({ id: 'bldg:1000-001', status: 'under_demolition' });
+
+    expect(
+      filterBuildings([located, unplotted, demolition], { query: '', status: 'vacancy' }).map((d) => d.id),
+    ).toEqual([located.id, unplotted.id]);
+    expect(filterBuildings([unplotted], { query: 'nowhere', status: 'all' })).toHaveLength(1);
+    expect(filterBuildings([unplotted], { query: '', status: 'vacancy' })).toHaveLength(1);
+    expect(buildingMatchesFilter('reported_vacant', 'vacancy')).toBe(true);
+    expect(buildingMatchesFilter('under_demolition', 'vacancy')).toBe(false);
+    expect(buildingFilterLabel('vacancy')).toBe('reported vacant / derelict');
   });
 
   it('keeps private checks separate from the City record and summarises the newest', () => {

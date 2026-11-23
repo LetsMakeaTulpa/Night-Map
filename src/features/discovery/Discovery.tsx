@@ -11,7 +11,8 @@ import {
 } from '../../state/selectors';
 import { searchLocal, type SearchHit } from '../../services/search';
 import { geocodePhoton, GeocodeError } from '../../services/geocoding';
-import { formatDistance } from '../../domain/geo';
+import { formatDistance, pointInBbox } from '../../domain/geo';
+import { hasOvernightService } from '../../data/transit-service';
 import { freshCheckCount, isFreshCheck, latestPlaceChecks, SURVEY_CHECK_DAYS } from '../../domain/survey';
 import { formatDate } from '../../domain/status';
 import { EmptyState, EvidencePill, OutsideCoverageTag, PathIcon, useOnline } from '../ui';
@@ -33,6 +34,7 @@ const QUICK_VIEW_ICON: Record<QuickViewId, string> = {
   'after-dark': '🌙',
   connections: '🚇',
   scenes: '✨',
+  'still-running': '🕛',
 };
 
 export function SearchBar({ autoFocus = false, onNavigate }: { autoFocus?: boolean; onNavigate?: () => void }) {
@@ -312,7 +314,12 @@ export function FilterBar({ compact = false }: { compact?: boolean }) {
 
   // Quick-view definitions live in one tested module so labels and active
   // states always match the filter state they apply.
-  const applyPreset = (preset: QuickViewId) => actions.setFilter(quickViewPatch(preset));
+  const applyPreset = (preset: QuickViewId) => {
+    actions.setFilter(quickViewPatch(preset));
+    // A stop view has to switch the stop layer on, or the chip would filter a
+    // layer the reader cannot see.
+    if (QUICK_VIEWS[preset].overnightStops) actions.setLayer('transit-stops', true);
+  };
   const isPresetActive = (preset: QuickViewId) => isQuickViewActive(state.filters, preset);
 
   // A quick-view chip reports what pressing it would show: matches in the
@@ -321,6 +328,18 @@ export function FilterBar({ compact = false }: { compact?: boolean }) {
   const quickViewCounts = useMemo(() => {
     const counts = {} as Record<QuickViewId, { total: number; inView: number }>;
     for (const id of QUICK_VIEW_IDS) {
+      if (id === 'still-running') {
+        // This view counts Muni stops, not places: the places list is hidden.
+        const stops = dataset.data.transit.filter((stop) => hasOvernightService(stop.id));
+        const bounds = state.viewportBounds;
+        counts[id] = {
+          total: stops.length,
+          inView: bounds
+            ? stops.filter((stop) => pointInBbox(stop.geometry.coordinates, bounds)).length
+            : stops.length,
+        };
+        continue;
+      }
       const views = filteredViews(
         { ...state, filters: { ...state.filters, ...quickViewPatch(id) } },
         dataset,
@@ -337,6 +356,9 @@ export function FilterBar({ compact = false }: { compact?: boolean }) {
   // The chip count says zero; this notice explains it and offers the fit.
   const quickViewEmpty =
     activeQuickView !== null &&
+    // Still running counts stops, not place records: the place-fit recovery
+    // would frame the wrong dataset, so the chip count stands alone.
+    activeQuickView !== 'still-running' &&
     Boolean(state.viewportBounds) &&
     !outsideView &&
     quickViewCounts[activeQuickView].inView === 0 &&
@@ -358,9 +380,11 @@ export function FilterBar({ compact = false }: { compact?: boolean }) {
               aria-pressed={active}
               aria-label={`${QUICK_VIEWS[id].label} quick view, ${count} ${state.viewportBounds ? 'in view' : 'matching'}`}
               title={
-                state.viewportBounds
-                  ? `${inView} in view · ${total} matching ${total === 1 ? 'record' : 'records'}`
-                  : `${total} ${total === 1 ? 'record' : 'records'} in this release`
+                id === 'still-running'
+                  ? `${state.viewportBounds ? `${inView} in view · ` : ''}${total} stops with scheduled Muni service between 22:00 and 05:00. Scheduled only, not live arrivals.`
+                  : state.viewportBounds
+                    ? `${inView} in view · ${total} matching ${total === 1 ? 'record' : 'records'}`
+                    : `${total} ${total === 1 ? 'record' : 'records'} in this release`
               }
               onClick={() => applyPreset(id)}
               data-testid={`quick-view-${id}`}

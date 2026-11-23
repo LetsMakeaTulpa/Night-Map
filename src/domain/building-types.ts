@@ -18,6 +18,12 @@ export type BuildingStatus =
 export type BuildingConfidence = 'high' | 'medium' | 'low';
 
 /**
+ * A registry filter. `vacancy` groups the two reported-vacancy classes; it is
+ * never a finding that a building is empty.
+ */
+export type BuildingFilter = 'all' | 'vacancy' | BuildingStatus;
+
+/**
  * A field observation of a building's condition. It is deliberately coarse and
  * visual: a person can record what a doorway looks like, not adjudicate vacancy.
  */

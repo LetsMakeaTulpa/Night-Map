@@ -9,6 +9,7 @@ export type {
   BuildingConfidence,
   BuildingCounts,
   BuildingDossier,
+  BuildingFilter,
   BuildingLocationPrecision,
   BuildingNotice,
   BuildingPermit,
@@ -476,6 +477,8 @@ export interface Filters {
   nearTransit: boolean;
   accessibleOnly: boolean;
   afterDark: boolean;
+  /** Show only Muni stops with scheduled service between 22:00 and 05:00. */
+  overnightStops: boolean;
   query: string;
 }
 

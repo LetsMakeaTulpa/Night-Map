@@ -1,9 +1,15 @@
 import { useEffect, useMemo, useState } from 'react';
 import { BUILDING_REGISTRY_META, cachedBuildingRegistry, loadBuildingRegistry } from '../../data/building-registry';
-import { BUILDING_STATUSES, buildingRecordSummary, filterBuildings } from '../../domain/buildings';
+import {
+  BUILDING_STATUSES,
+  buildingFilterLabel,
+  buildingMatchesFilter,
+  buildingRecordSummary,
+  filterBuildings,
+} from '../../domain/buildings';
 import { useStore } from '../../state/store';
 import { EmptyState } from '../ui';
-import type { BuildingRegistry, BuildingStatus } from '../../domain/types';
+import type { BuildingFilter, BuildingRegistry } from '../../domain/types';
 import { formatDate } from '../../domain/status';
 import { PathIcon } from '../ui';
 import { BuildingThumb } from './BuildingPhoto';
@@ -21,7 +27,7 @@ export function BuildingsWorkspace() {
   const [status, setStatus] = useState<'loading' | 'ready' | 'error'>(registry ? 'ready' : 'loading');
   const [error, setError] = useState<string | null>(null);
   const [query, setQuery] = useState('');
-  const [statusFilter, setStatusFilter] = useState<BuildingStatus | 'all'>('all');
+  const [statusFilter, setStatusFilter] = useState<BuildingFilter>('all');
   const [limit, setLimit] = useState(PAGE_SIZE);
 
   useEffect(() => {
@@ -115,6 +121,23 @@ export function BuildingsWorkspace() {
 
   const counts = registry?.counts;
   const shown = results.slice(0, limit);
+  const vacancyCount = dossiers.filter((dossier) => buildingMatchesFilter(dossier.status, 'vacancy')).length;
+  // The map filters by classification, not by the table's search text.
+  const locatedForFilter = dossiers.filter(
+    (dossier) => dossier.coordinates && buildingMatchesFilter(dossier.status, statusFilter),
+  ).length;
+
+  const showOnMap = () => {
+    actions.setBuildingFilter(statusFilter);
+    actions.setLayer('building-registry', true);
+    // The default vacancy layer would double-plot a subset of the same parcels.
+    actions.setLayer('abandoned-buildings', false);
+    actions.setSheet('peek');
+    actions.notify(
+      `${locatedForFilter.toLocaleString()} ${buildingFilterLabel(statusFilter)} dossier${locatedForFilter === 1 ? '' : 's'} with a published point on the map. The rest stay in the table.`,
+      'success',
+    );
+  };
 
   return (
     <div className="workspace-panel buildings">
@@ -131,7 +154,7 @@ export function BuildingsWorkspace() {
 
       <div className="building-controls">
         <label className="field">
-          <span>Search address, block, lot or neighbourhood</span>
+          <span>Search all {dossiers.length.toLocaleString()} dossiers — address, block, lot or neighbourhood</span>
           <input
             type="search"
             value={query}
@@ -143,9 +166,10 @@ export function BuildingsWorkspace() {
           <span>Record classification</span>
           <select
             value={statusFilter}
-            onChange={(event) => setStatusFilter(event.target.value as BuildingStatus | 'all')}
+            onChange={(event) => setStatusFilter(event.target.value as BuildingFilter)}
           >
             <option value="all">All classifications ({dossiers.length.toLocaleString()})</option>
+            <option value="vacancy">Reported vacant / derelict ({vacancyCount.toLocaleString()})</option>
             {BUILDING_STATUSES.map((entry) => (
               <option key={entry.id} value={entry.id}>
                 {entry.label} ({counts?.byStatus[entry.id] ?? 0})
@@ -153,6 +177,17 @@ export function BuildingsWorkspace() {
             ))}
           </select>
         </label>
+      </div>
+
+      <div className="building-map-row">
+        <button type="button" className="button small" onClick={showOnMap} disabled={locatedForFilter === 0}>
+          Show {locatedForFilter.toLocaleString()} located {locatedForFilter === 1 ? 'dossier' : 'dossiers'} on the map
+        </button>
+        <span className="muted small">
+          {query.trim()
+            ? 'The map shows the whole classification; the search narrows the table only.'
+            : 'Only dossiers with a City-published point can be plotted; the rest stay in the table.'}
+        </span>
       </div>
 
       <p className="muted small" aria-live="polite">

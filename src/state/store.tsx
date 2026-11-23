@@ -10,6 +10,7 @@ import {
 } from 'react';
 import type {
   BuildingCondition,
+  BuildingFilter,
   CategoryId,
   ChangeRecord,
   Collection,
@@ -98,6 +99,8 @@ export interface AppState {
   selectedStopId: string | null;
   /** A parcel dossier from the on-demand building registry. */
   selectedBuildingId: string | null;
+  /** Which registry classifications the map layer plots. */
+  buildingFilter: BuildingFilter;
   selectedExternal: {
     label: string;
     detail: string;
@@ -160,6 +163,7 @@ const initialState: AppState = {
     nearTransit: false,
     accessibleOnly: false,
     afterDark: false,
+    overnightStops: false,
     query: '',
   },
   layers: initialLayers,
@@ -168,6 +172,7 @@ const initialState: AppState = {
   selectedPlaceId: null,
   selectedStopId: null,
   selectedBuildingId: null,
+  buildingFilter: 'all',
   selectedExternal: null,
   saved: [],
   observations: [],
@@ -242,6 +247,7 @@ interface StoreValue {
     selectPlace: (id: string | null) => void;
     selectStop: (id: string | null) => void;
     selectBuilding: (id: string | null) => void;
+    setBuildingFilter: (filter: BuildingFilter) => void;
     selectExternal: (value: AppState['selectedExternal']) => void;
     setLayer: (id: string, visible: boolean) => void;
     setLayerOpacity: (id: string, opacity: number) => void;
@@ -522,6 +528,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
           selectedBuildingId: null,
         })),
 
+      setBuildingFilter: (filter) => setState((s) => ({ ...s, buildingFilter: filter })),
       setLayer: (id, visible) => setState((s) => ({ ...s, layers: { ...s.layers, [id]: visible } })),
       setLayerOpacity: (id, opacity) =>
         setState((s) => ({ ...s, layerOpacity: { ...s.layerOpacity, [id]: opacity } })),

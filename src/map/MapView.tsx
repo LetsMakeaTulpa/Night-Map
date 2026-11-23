@@ -39,8 +39,11 @@ import {
 } from './incidents';
 import { IncidentCard } from '../features/incidents/IncidentCard';
 import { StreetLevelViewer } from './StreetLevelViewer';
+import { StopCard } from '../features/transit/StopCard';
+import { hasOvernightService } from '../data/transit-service';
 import { useOnline } from '../features/ui';
 import { cachedBuildingRegistry, loadBuildingRegistry } from '../data/building-registry';
+import { buildingFilterLabel, buildingMatchesFilter } from '../domain/buildings';
 import { cachedAbandonedBuildings, loadAbandonedBuildings } from '../data/abandoned-buildings';
 import type { AbandonedBuildingFile, BuildingRegistry } from '../domain/types';
 
@@ -927,15 +930,22 @@ export function MapView({ views, onOpenLayers }: MapViewProps) {
     const map = mapRef.current;
     if (!map || !ready) return;
     const fc = (map.getSource('stops') as maplibregl.GeoJSONSource | undefined);
+    // The Still running view narrows the stop layer to stops with a scheduled
+    // departure inside the 22:00–05:00 window. The source keeps every stop's
+    // geometry; only the rendered set changes, and nothing is hidden silently:
+    // the chip's count says how many stops are showing.
+    const visibleStops = state.filters.overnightStops
+      ? dataset.data.transit.filter((stop) => hasOvernightService(stop.id))
+      : dataset.data.transit;
     fc?.setData({
       type: 'FeatureCollection',
-      features: dataset.data.transit.map((stop) => ({
+      features: visibleStops.map((stop) => ({
         type: 'Feature' as const,
         properties: { id: stop.id, name: stop.name },
         geometry: stop.geometry,
       })),
     });
-  }, [ready]);
+  }, [ready, state.filters.overnightStops]);
 
   useEffect(() => {
     const timer = window.setInterval(() => setClock(Date.now()), 10_000);
@@ -1163,7 +1173,7 @@ export function MapView({ views, onOpenLayers }: MapViewProps) {
     const apply = (registry: BuildingRegistry) => {
       if (cancelled) return;
       const features = registry.dossiers
-        .filter((dossier) => dossier.coordinates)
+        .filter((dossier) => dossier.coordinates && buildingMatchesFilter(dossier.status, state.buildingFilter))
         .map((dossier) => ({
           type: 'Feature' as const,
           properties: { id: dossier.id, status: dossier.status, address: dossier.address },
@@ -1184,7 +1194,7 @@ export function MapView({ views, onOpenLayers }: MapViewProps) {
     return () => {
       cancelled = true;
     };
-  }, [registryOn, ready]);
+  }, [registryOn, ready, state.buildingFilter]);
 
   const abandonedOn = Boolean(state.layers['abandoned-buildings']);
   useEffect(() => {
@@ -2193,7 +2203,7 @@ export function MapView({ views, onOpenLayers }: MapViewProps) {
           <span className="map-scale-note" data-testid="registry-status">
             {registryState.error
               ? `Building registry unavailable — ${registryState.error}`
-              : `${registryState.loaded} parcel dossiers with a published point`}
+              : `${registryState.loaded} parcel dossiers with a published point${state.buildingFilter === 'all' ? '' : ` · ${buildingFilterLabel(state.buildingFilter)}`}`}
           </span>
         )}
         {abandonedOn && (
@@ -2710,6 +2720,8 @@ export function MapView({ views, onOpenLayers }: MapViewProps) {
           </p>
         </div>
       )}
+
+      {selectedStop && <StopCard stop={selectedStop} onClose={() => actions.selectStop(null)} />}
 
       {incidentCard && (
         <IncidentCard

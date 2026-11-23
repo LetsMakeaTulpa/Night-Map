@@ -59,6 +59,7 @@ const baseFilters: Filters = {
   nearTransit: false,
   accessibleOnly: false,
   afterDark: false,
+  overnightStops: false,
   query: '',
 };
 

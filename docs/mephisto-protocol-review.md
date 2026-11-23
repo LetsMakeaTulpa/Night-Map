@@ -1,6 +1,8 @@
 # Mephisto Protocol v1.0 — engineering review
 
-Status: accepted as a set of product ideas, not accepted as deployable code.
+Status: accepted as a set of product ideas, not accepted as deployable code. The
+amendment at the end records what the shipped app now does; where the two differ,
+the amendment and the README describe the build.
 
 ## 1. Shadow Layer → Public-realm maintenance context
 
@@ -20,7 +22,7 @@ No map color is to mean “safe”. The maintenance palette is a category cue on
 
 ## 2. WhisperNet → native-first, opt-in communications design
 
-Not implemented in the browser/PWA. React Native BLE APIs and Android Wi-Fi Direct are not available through the current MapLibre web application without a separate native transport layer and platform permissions.
+WhisperNet's peer-to-peer transport is not implemented in the browser/PWA. React Native BLE APIs and Android Wi-Fi Direct are not available through the current MapLibre web application without a separate native transport layer and platform permissions. The app's Messages workspace is a separate feature: self-addressed, location-locked notes on this device, with no peer delivery.
 
 The supplied sample is not secure:
 - CryptoJS.AES.encrypt does not implement AES-256-GCM as claimed; the default CryptoJS AES mode is not an authenticated-encryption interface.
@@ -40,8 +42,9 @@ Accepted: create building dossiers from public, attributable records and public-
 
 Rejected: infer occupancy or abandoned status solely from boarded windows, darkness, faded signs, vegetation or broken glass. None proves vacancy. Street imagery may be old, seasonal, obscured or mislocated. The supplied model file, training data and dependency/API versions are not included, so the sample cannot currently run.
 
-Future record classes:
-- official commercial-vacancy filings or other explicitly published vacancy declarations;
+Record classes, now implemented where a source exists:
+- official commercial-vacancy filings or other explicitly published vacancy declarations
+  (San Francisco publishes no such register, so this class is unused);
 - parcel and assessor records, planning/zoning, permits and inspections where public;
 - OSM building footprint/address/entrance data, clearly attributed;
 - visual condition observations from public rights-of-way, dated and marked unverified;
@@ -51,9 +54,37 @@ Do not convert an unverified building into a suggested shelter, entry target, va
 
 ## Explicitly not implemented
 
+This list is about inference and intrusion, not about City records: dispatched calls ship
+as published, delayed records, and vacancy/abandonment parcels ship as reported records
+(see the amendment).
+
 - person-level or live encampment location reporting;
 - a predictive danger score from civic complaints;
 - unauthorized CCTV patching, private camera access or camera-network exploitation;
 - instructions to enter private or unsecured buildings or to use them as vantage/escape locations.
 
 These are deliberate product and privacy boundaries, not missing implementation details.
+
+## Amendment — 2026-11-23
+
+The product owner asked for the boundaries above to be re-examined. What has
+changed in the build since this review:
+
+- **Police activity is shipped, not refused.** Dispatched calls are plotted from
+  the City's delayed CAD feed while the layer is open; sensitive and
+  person-describing categories are removed and coordinates are coarsened to about
+  40 m.
+- **HollowShell became the building registry.** Parcel dossiers join DBI
+  complaints, permits and notices; they classify records, never occupancy.
+- **Vacancy and abandonment parcels are shown from City records**, labelled as
+  reported and never as a confirmed vacant building.
+
+What still stands, and why:
+
+- live camera streams and a camera point layer — no lawful public feed or register
+  exists, so positions would be invented;
+- encampment locations — mapping where unhoused people sleep would turn the map
+  into a targeting tool;
+- occupancy inference from photographs — a boarded window is not a vacancy finding.
+
+This amendment records a product decision; it does not change the underlying data.

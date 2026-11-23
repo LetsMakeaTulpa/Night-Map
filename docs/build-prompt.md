@@ -3,7 +3,7 @@
 A single, self-contained prompt describing the whole Night Map build. Hand it to a coding
 agent with an empty repository and the result should be the application this branch holds:
 a mobile-first urban discovery and fieldwork map for a central San Francisco footprint that
-never dresses a guess up as a fact.
+keeps published records, schedules and estimates visibly distinct from facts.
 
 ---
 
@@ -33,28 +33,23 @@ It is a **first slice**, not a citywide directory. The footprint is
 `[-122.429, 37.7585, -122.3905, 37.7975]` (Downtown, SoMa, Tenderloin, Civic Center,
 Chinatown, Financial District) and the interface says so throughout.
 
-## Non-negotiable honesty rules
+## Data rules
 
-These decide more of the design than any framework choice:
+These keep the interface traceable without turning product choices into policy prose:
 
 1. **Every claim carries its source.** Prices, payment rules, ID/intake requirements and
-   published limits store the page they came from and the date it was read. Where a provider
+   published limits store the page they came from and the date it was read; where a provider
    publishes nothing, the line stays blank and the interface says *the source does not say*.
-   Silence is never permission.
 2. **No invented availability.** A POPOS or resource record is not "open now" unless its
    hours can be represented exactly. A split schedule with a midday closure stores no hours
-   at all and refuses to answer "open now".
+   and cannot answer "open now".
 3. **Estimates are labelled.** Building heights from footprint type are marked as estimates,
-   never as measured heights.
+   not measured heights.
 4. **Snapshots are not live feeds.** Dispatched calls and 311 requests are opt-in layers
    cached on first use; the age of the newest record is computed at read time and displayed.
    Police radio and CCTV panels state why they are empty and list the documents that were
    read instead of pretending to stream.
-5. **A request is not a defect.** Public-realm 311 counts never become a safe/unsafe rating.
-6. **Private data stays private.** Notes, saved places, routes and messages live in
-   IndexedDB on the device; there is no publish action, no server delivery, no moderation.
-   Never substitute a simulated or map-centre location for a device fix.
-7. **Coverage is the visible aperture.** Whether records are "in view" is judged on the
+5. **Coverage is the visible aperture.** Whether records are "in view" is judged on the
    visible map aperture (including tilt and the area hidden behind the sheet, dock and
    controls), not on `map.getBounds()`. A map merely covered by UI is not "outside coverage",
    and "no records in this view" is a different state from "outside coverage".
@@ -104,6 +99,10 @@ in `scripts/.cache` so re-runs after rule changes need no network.
 - `npm run data:build` — normalise, validate, write places/resources/sources; POPOS import
   keeps City-published coordinates, free-text hours, entrance notes and amenities, and marks
   availability unknown until field-verified.
+- `npm run data:transit-service` — SFMTA GTFS → `src/data/transit-service.json`: per-stop
+  routes, departure counts, median headway and last departure between 22:00 and 05:00 on one
+  named service date, plus an owl flag. Keeps GTFS night-clock times (e.g. `28:32`) and the
+  SFMTA derivative notice in the file.
 - `npm run data:access` — geocode hand-checked access records through Nominatim and write
   `src/data/access.json` **with the query and matched OSM object** beside each coordinate.
   Refuse records outside the footprint, sources absent from the registry, or friction lines
@@ -160,11 +159,21 @@ never message text, and an open message relocks when its fix expires.
 dragged or the lock stops. First follow moves to street zoom; later fixes preserve zoom. The
 crosshair stays a one-time realign action.
 
-**Registry and civic layers.** Buildings is a parcelless pin-free registry workspace: table,
-search across unplotted dossiers, chronology, counts, a score that lists its inputs, and a
-thumbnail row per dossier. Maintenance context filters sanitized 311 categories to coarse
-areas and counts. Reported activity plots opt-in dispatched calls (closed within 48 h) and 311
-requests with a slow pulse, age chip and information card.
+**Registry and civic layers.** Buildings is a parcel-level registry workspace: 3,847 dossiers
+joined on City block/lot, search across all of them (including the 2,043 with no published
+point), per-parcel chronology, counts, a score that lists its inputs, and a thumbnail per
+dossier. A **Reported vacant / derelict** filter groups the two reported-vacancy classes
+(2,860 dossiers); the default-on **Abandoned & vacant buildings** layer plots the 919 located
+vacancy parcels, and the optional **Building registry dossiers** layer plots all 1,804 located
+dossiers, filtered by the workspace selection. A classification is never a confirmed vacancy.
+Maintenance context filters sanitized 311 categories to coarse areas and counts. Reported
+activity plots opt-in dispatched calls (closed within 48 h) and 311 requests with a slow pulse,
+age chip and information card.
+
+**Night service.** SFMTA GTFS gives each installed stop its scheduled routes, median headway,
+last departure and owl flag for one named weekday between 22:00 and 05:00. Stop cards show
+the routes, the feed dates and that the times are scheduled, not live; the **Still running**
+quick view narrows the stop layer to stops with service in that window.
 
 **Saved views.** A view stores layers, filters, pitch and bearing (`CameraPose`) plus map
 position. Saving strips the camera into a store request (`cameraRestore`) that the map applies
@@ -195,8 +204,8 @@ not installed up front. A missing glyph range must return 404, never the SPA fal
 ## Testing and verification
 
 - `npm test` — unit tests for hours, status, verification, cost/friction and disclosure rules,
-  terrain and building rules, registry rules, routing, selectors, presence/messages, data,
-  aperture coverage and camera poses.
+  terrain and building rules, registry rules, transit-service data, routing, selectors,
+  presence/messages, data, aperture coverage and camera poses.
 - `npx playwright test` — desktop + mobile specs for map chrome, camera/3D, coverage, quick
   views, saved views, incidents, mobile field use, offline shell and verification flows.
 - Assert touch behaviour where it matters: `touch-action: manipulation` on controls, a drag
@@ -207,6 +216,21 @@ not installed up front. A missing glyph range must return 404, never the SPA fal
 - The offline spec runs against a real service worker and is skipped unless a production URL
   is supplied: build, `npm run preview`, then point `BASE_URL` at it.
 - Typecheck before declaring done (`npm run typecheck`), and report checks that were not run.
+
+## Crossed out (not doing)
+
+Kept visible rather than deleted. These are the ideas outside the build:
+
+- ~~Camera, kiosk and plate-reader positions~~ — the City publishes no register, so a dot
+  would be invented.
+- ~~Live 911 audio, police radio and camera streams~~ — no lawful public live source exists;
+  delayed dispatched-call records are plotted instead.
+- ~~Encampment locations~~ — this maps people where they sleep.
+- ~~Occupancy or "confirmed vacant" findings from imagery~~ — a boarded window is not a
+  vacancy finding.
+- ~~Safety, crime or lighting scores~~ — records and fixtures do not support a prediction.
+
+Everything not crossed out here is available for another tool to build.
 
 ## Acceptance criteria
 

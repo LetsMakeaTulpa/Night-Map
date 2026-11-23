@@ -6,7 +6,7 @@
  * of records — never a finding about who is inside a building or whether a door
  * is open today — so every helper here says what it is quoting.
  */
-import type { BuildingCondition, BuildingDossier, BuildingStatus, Observation } from './types';
+import type { BuildingCondition, BuildingDossier, BuildingFilter, BuildingStatus, Observation } from './types';
 import { formatDate } from './status';
 
 export interface BuildingStatusMeta {
@@ -267,13 +267,28 @@ export function buildingSearchText(dossier: BuildingDossier): string {
     .toLowerCase();
 }
 
+export const REPORTED_VACANT_STATUSES: BuildingStatus[] = ['reported_vacant', 'vacancy_history'];
+
+/** Does a dossier's classification fall inside the selected filter? */
+export function buildingMatchesFilter(status: BuildingStatus, filter: BuildingFilter): boolean {
+  if (filter === 'all') return true;
+  if (filter === 'vacancy') return REPORTED_VACANT_STATUSES.includes(status);
+  return status === filter;
+}
+
+export function buildingFilterLabel(filter: BuildingFilter): string {
+  if (filter === 'all') return 'all classifications';
+  if (filter === 'vacancy') return 'reported vacant / derelict';
+  return buildingStatusMeta(filter).label.toLowerCase();
+}
+
 export function filterBuildings(
   dossiers: BuildingDossier[],
-  options: { query: string; status: BuildingStatus | 'all' },
+  options: { query: string; status: BuildingFilter },
 ): BuildingDossier[] {
   const query = options.query.trim().toLowerCase();
   return dossiers.filter((dossier) => {
-    if (options.status !== 'all' && dossier.status !== options.status) return false;
+    if (!buildingMatchesFilter(dossier.status, options.status)) return false;
     if (!query) return true;
     return buildingSearchText(dossier).includes(query);
   });

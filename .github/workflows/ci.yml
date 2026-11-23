@@ -36,3 +36,48 @@ jobs:
         run: npm test
       - name: Production build
         run: npm run build
+
+  offline:
+    name: Offline service-worker scenario (desktop + mobile)
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - name: Install locked dependencies
+        run: npm ci
+      - name: Install Chromium for Playwright
+        run: npx playwright install --with-deps chromium
+      - name: Build the production app
+        run: npm run build
+      - name: Serve the production preview on 4173
+        run: |
+          set -euo pipefail
+          nohup npm run preview -- --port 4173 --strictPort > preview.log 2>&1 &
+          for attempt in $(seq 1 60); do
+            if curl -fsS http://127.0.0.1:4173/ > /dev/null; then
+              echo "Production preview answered on 4173 after ${attempt}s."
+              exit 0
+            fi
+            sleep 1
+          done
+          echo "Production preview did not answer on 4173." >&2
+          cat preview.log >&2
+          exit 1
+      - name: Run the offline scenario against the preview
+        run: >-
+          BASE_URL=http://127.0.0.1:4173 npx playwright test tests/e2e/offline.spec.ts
+          --project=desktop --project=mobile
+      - name: Keep failure traces
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: offline-playwright-results
+          path: test-results/
+          if-no-files-found: ignore
+          retention-days: 7

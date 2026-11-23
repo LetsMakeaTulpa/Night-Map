@@ -1,6 +1,6 @@
 import type { CategoryId, Filters } from './types';
 
-export type QuickViewId = 'essentials' | 'after-dark' | 'connections' | 'scenes';
+export type QuickViewId = 'essentials' | 'after-dark' | 'connections' | 'scenes' | 'still-running';
 
 /** Stable order for the chip row; counts and labels are keyed off the same ids. */
 export const QUICK_VIEW_IDS: readonly QuickViewId[] = [
@@ -8,6 +8,7 @@ export const QUICK_VIEW_IDS: readonly QuickViewId[] = [
   'after-dark',
   'connections',
   'scenes',
+  'still-running',
 ];
 
 /**
@@ -17,7 +18,7 @@ export const QUICK_VIEW_IDS: readonly QuickViewId[] = [
  */
 export const QUICK_VIEWS: Record<
   QuickViewId,
-  { label: string; categories: CategoryId[]; afterDark?: boolean }
+  { label: string; categories: CategoryId[]; afterDark?: boolean; overnightStops?: boolean }
 > = {
   essentials: {
     label: 'Essentials',
@@ -32,6 +33,14 @@ export const QUICK_VIEWS: Record<
       'bathroom', 'water', 'civic', 'nightlife', 'counterculture',
     ],
   },
+  // A transit view rather than a place list: it hides places and keeps only the
+  // stops with a scheduled departure after 22:00. It makes no claim that the
+  // service will run on time, or that waiting at a stop is safe.
+  'still-running': {
+    label: 'Still running',
+    categories: [],
+    overnightStops: true,
+  },
 };
 
 export function quickViewPatch(preset: QuickViewId): Partial<Filters> {
@@ -45,6 +54,7 @@ export function quickViewPatch(preset: QuickViewId): Partial<Filters> {
     nearTransit: false,
     accessibleOnly: false,
     afterDark: view.afterDark ?? false,
+    overnightStops: view.overnightStops ?? false,
   };
 }
 
@@ -55,5 +65,10 @@ export function isQuickViewActive(filters: Filters, preset: QuickViewId): boolea
     && !filters.query.trim();
   const selected = [...filters.categories].sort().join('|');
   const expected = [...view.categories].sort().join('|');
-  return neutral && selected === expected && filters.afterDark === (view.afterDark ?? false);
+  return (
+    neutral &&
+    selected === expected &&
+    filters.afterDark === (view.afterDark ?? false) &&
+    filters.overnightStops === (view.overnightStops ?? false)
+  );
 }

@@ -132,7 +132,7 @@ export const LAYERS: (LayerDefinition & { defaultOpacity?: number })[] = [
   },
   {
     id: 'calls-recent',
-    name: 'Dispatched calls (live, 10-min delay)',
+    name: 'Dispatched calls (closed, 10-min delay)',
     description:
       'Police, fire and other dispatched calls from the City’s CAD extract, refreshed every two minutes while this layer is on. The City delays it ten minutes and withholds sensitive calls; open calls are absent and there is no audio. Falls back to the bundled snapshot offline.',
     group: 'context',

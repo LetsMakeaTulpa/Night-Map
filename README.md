@@ -8,8 +8,8 @@ This is a **first slice**, not a citywide directory. It covers a central footpri
 (Downtown, SoMa, Tenderloin, Civic Center, Chinatown, Financial District) and says
 so throughout the interface.
 
-See [ROADMAP.md](ROADMAP.md) for what is done, what is partial, what is deliberately
-refused, and what comes next.
+See [ROADMAP.md](ROADMAP.md) for what is done, what is partial, what is not built and
+why, and what comes next.
 
 ## Run locally
 
@@ -60,6 +60,7 @@ npm run data:incidents # DataSF dispatched calls + 311 cases → public/incident
 npm run data:sfgov     # DataSF SODA rows → scripts/.cache/*
 npm run data:sfgov -- --refresh # bypass cached API responses and fetch fresh City data
 npm run data:build     # normalise, validate and write places/resources/sources
+npm run data:transit-service # SFMTA GTFS → per-stop overnight service, headways and last departure
 npm run data:access    # geocode the hand-checked access records → src/data/access.json
 npm run data:validate:incidents # validate the civic snapshot privacy/geometry boundary
 ```
@@ -100,6 +101,13 @@ simplification or the height rules needs no network.
   restrooms, meal providers, service centers, shelter and civic facilities, 81
   POPOS records, and hand-checked access records across medical, mail, phone and
   device services; plus **605 Muni stops**.
+- **Night service, from the timetable rather than a vehicle feed.** Each stop carries the
+  routes, median headway and last departure scheduled between 22:00 and 05:00 on one named
+  service date, plus an owl flag when a route runs past midnight. **524 of 605 stops** have
+  scheduled service in that window and **282** are owl stops. The **Still running** view
+  narrows the stop layer to those stops, and each stop card states the feed dates and that no
+  arrival is promised. Scheduled SFMTA GTFS data, reproduced under the SFMTA Transit Data
+  License Agreement with its required derivative notice shown in the card.
 - **Cost and friction, quoted rather than inferred.** Every price, payment rule, ID or
   intake requirement and published limit carries the page it came from and the date that
   page was read — **23 friction lines** across the access records. Where a provider
@@ -119,12 +127,15 @@ simplification or the height rules needs no network.
   plot. The **Map**, **Notes** and **Review** entries were removed from the phone bar at the owner's
   request: notes and the review queue stay reachable from the header buttons beside search, and all
   three remain in the desktop workspace tabs.
-- **A building registry, not a layer of pins.** 3,847 parcel dossiers joined on the
-  City's block/lot from DBI complaints, permits and notices of violation: 1,804 carry a
-  position (1,740 a City parcel point, 64 a labelled block centroid), and the other 2,043
-  are searchable in the table and deliberately not plotted. Each dossier keeps its records,
-  its chronology, its counts and a score that lists the records that produced it. See
-  "Building registry" below.
+- **A building registry, plus a reported-vacancy map layer.** 3,847 parcel dossiers are
+  joined on the City's block/lot from DBI complaints, permits and notices of violation:
+  1,804 carry a position (1,740 a City parcel point, 64 a labelled block centroid), and the
+  other 2,043 are searchable in the table and deliberately not plotted. The default-on
+  **Abandoned & vacant buildings** layer plots the 919 located parcels whose records
+  describe a vacant or abandoned condition; the optional **Building registry dossiers**
+  layer plots all 1,804 located dossiers, including demolition, construction and
+  code-enforcement records. Each dossier keeps its records, its chronology, its counts and
+  a score that lists the records that produced it. See "Building registry" below.
 - Map with clustering, category/condition filters, a legend, saved views, and
   layer presets (Essentials, Resources, Transit, My fieldnotes, History, Reported activity, Scenes & hideaways).
 - Place inspector with access, hours, evidence, sources, observation history and
@@ -173,8 +184,8 @@ simplification or the height rules needs no network.
   incomplete and variable by capture date.
 - **Public-realm maintenance context, not a risk score.** A separate map layer and coarse-area count filter the sanitized 311 snapshot for exact City service categories covering streetlights, street/sidewalk cleaning, public graffiti, litter receptacles, street defects and blocked public ways. A request is not proof of an outage, ongoing defect, danger or neglect; counts never become a safe/unsafe rating.
 - **Reported activity, as snapshots and never as a live feed.** Two real City datasets are
-  plotted on demand: 525 dispatched calls that had closed within 48 hours, and 2,358 recent
-  311 requests. Both are opt-in layers, both are cached on first use rather than installed,
+  plotted on demand; the bundled snapshots hold 470 dispatched calls that had closed within
+  48 hours and 2,492 recent 311 requests. Both are opt-in layers, both are cached on first use rather than installed,
   and the age of the newest record is computed at read time (`newest 9 h ago`) so a stale
   snapshot cannot present itself as current. Dispatched calls pulse slowly behind their dot
   and open an information card; any plotted feature — incident, landmark or stop — can be
@@ -187,8 +198,14 @@ simplification or the height rules needs no network.
 
 ## Building registry
 
-`Buildings` is a parcel-level registry, not a second set of pins. Every dossier is
-keyed by the City's block/lot identifier and joins three Department of Building
+`Buildings` is a parcel-level registry workspace. Two map layers cover it: the
+default-on **Abandoned & vacant buildings** layer plots the 919 located
+vacancy/abandonment parcels, and the optional **Building registry dossiers** layer plots
+all 1,804 located dossiers. The workspace filters to **Reported vacant / derelict** —
+the two reported-vacancy classes, 2,860 dossiers — and can plot the located matches; its
+search covers all 3,847, including the 2,043 with no published point. Every dossier is
+keyed by the City's block/lot identifier and
+joins three Department of Building
 Inspection datasets — complaints (`gm2e-bten`), permits (`i98e-djp9`) and notices of
 violation (`nbtm-fbw5`) — so a building keeps its history even when the three files
 spell its address differently. Complaints carry no coordinates, which is why the join
@@ -197,11 +214,12 @@ at all and are therefore searchable in the table but never plotted. A parcel the
 did place is kept at that point, and the 64 parcels placed at the centroid of their
 block's geocoded parcels say so on the dossier.
 
-The registry ships as `/buildings/registry.json`. It is **not** in the app shell: the
-first visit to the workspace or the first switch of its map layer fetches it once, and
-the service worker caches that response for offline use afterwards. The bundled
-manifest (`src/data/building-registry-meta.json`) carries the counts, the window and
-the limitations before the registry itself arrives.
+The registry ships as `/buildings/registry.json` (4.6 MB). It is **not** in the app
+shell: the first visit to the workspace or the first switch of the **Building registry
+dossiers** layer fetches it once, and the service worker caches that response for
+offline use afterwards. The default vacancy layer uses a separate, point-only extract
+(`/buildings/abandoned.json`). The bundled manifest (`src/data/building-registry-meta.json`)
+carries the counts, the window and the limitations before the registry itself arrives.
 
 A parcel enters the build when a record in the bundled window (2022 onward) describes
 a vacant, abandoned, boarded or derelict condition, or a demolition permit was filed,
@@ -222,9 +240,11 @@ or a complaint/notice is still marked open. Each dossier stores:
 - **A derived chronology.** The timeline is computed from those preserved records at
   read time, so it cannot drift away from them.
 
-The map layer colours each parcel dot by classification, opens the dossier on click,
-and labels dots from z16.4. The purpose is stated in the workspace, the dossier, the
-layer drawer and Library → Privacy & limits: a classification is not a field check.
+The vacancy layer colours its dots by record class (`reported_vacant` or
+`vacancy_history`) and labels them from z16.4; the registry layer colours all six
+classifications and labels addresses from z16.4. Both open the dossier on click. The
+purpose is stated in the workspace, the dossier, the layer drawer and Library →
+Privacy & limits: a classification is not a field check.
 
 The limits are part of the data, not a footnote: complaints are selected by keyword
 because the dataset has no geometry; the bundled window starts in 2022; three rows of
@@ -269,6 +289,7 @@ of this is per-device: nothing is uploaded, and no second reviewer can see it.
 | --- | --- | --- |
 | [DataSF: Public Bathrooms and Water Fountains](https://data.sf.gov/d/wfq4-upmv) | Water points, restrooms, hours, access notes | PDDL 1.0 |
 | [DataSF: Muni Stops](https://data.sf.gov/d/i28k-bkz6) | Transit stop locations | PDDL 1.0 |
+| [SFMTA GTFS](https://www.sfmta.com/reports/gtfs-transit-data) | Scheduled overnight service per stop (routes, headways, last departure, owl flag), derived for one service date | SFMTA Transit Data License Agreement; derivative notice reproduced in the data and the stop card |
 | [DataSF: Law Enforcement Dispatched Calls for Service: Real-Time](https://data.sf.gov/d/gnap-fj3t) | Dispatched calls, 48-hour window (the City's `sensitive_call` redaction flag is honoured) | PDDL 1.0 |
 | [DataSF: 311 Cases](https://data.sf.gov/d/vw6y-z8j6) | 311 service requests, 7-day window, capped per service type | PDDL 1.0 |
 | [OpenStreetMap](https://www.openstreetmap.org/copyright) | Streets, parks, rail, coastline | ODbL 1.0 |
@@ -295,6 +316,11 @@ of this is per-device: nothing is uploaded, and no second reviewer can see it.
 | [City #SFWiFi](https://www.sf.gov/sfwifi) | Named free public Wi-Fi sites | City page, paraphrased |
 | [Recology transfer station](https://www.recology.com/recology-san-francisco/sf-transfer-station/) | Electronic-waste terms and hours | Operator page, paraphrased |
 | [COIT surveillance inventory](https://www.sf.gov/surveillance-technology-inventory) and [SFPD notice 25-041](https://www.sanfranciscopolice.org/your-sfpd/policies/department-bulletins-notices/25-041) | Feed status panels, with each document's limits stated | City pages, paraphrased |
+
+The SFMTA licence is stricter than the CC0 tag DataSF attaches to the same GTFS
+file, so Night Map follows the provider agreement: the derived overnight-service
+record reproduces its clause-12 notice, the stop card shows the feed dates, and no
+SFMTA or Muni logo is used.
 
 Every record stores `sourceIds`, a `lastVerifiedAt`/checked date, and a source
 type. Provider facts were read on **2026-10-24**, the access records on
@@ -351,31 +377,47 @@ and in the inspector.
   resolved. Night Map removes person-describing categories, drops addresses and free text,
   and keeps about 40 m of position. A missing record is not evidence that nothing happened at
   a place, and no record here names or locates a person.
-- **No surveillance layer, and linked documents instead.** San Francisco publishes a
-department-by-department inventory of surveillance technologies and **no register of camera
-positions**; the transport agency's reports describe systems without placing them, and the
-Police Department has stated it will not create a registry of non-City cameras. Night Map
-could also not verify any City statement about what its street kiosks collect — the City's
-privacy pages are scoped to its websites. So rather than plot inferred dots, the CCTV and
-Radio status panels link the official documents with what each one says and what it does not,
-and a unit test asserts that no map layer describes cameras, kiosks or plate readers. Two
-useful things requested for this release could not become markers for the same reason,
-which the guide states plainly: Recology's electronic-waste drop-off at 501 Tunnel Avenue is
-in Bayview, *outside this release's footprint*, and no San Francisco walk-in LifeLine
-enrolment address is published anywhere Night Map could verify.
-- **Declined, and why.** Live 911 audio, live CCTV and live police radio are not built: SFPD
-  radio has been encrypted since 2021, the City publishes no live incident audio, and there is
-  no lawful public live CCTV feed for San Francisco. Homeless encampments are deliberately not
-  plotted — the City's own 311 log carries over a thousand encampment cases a fortnight, and
-  mapping where unhoused people sleep would turn a navigation tool into a targeting tool.
-  **No confirmed abandoned-building register exists**, so none is claimed. San Francisco
-  publishes no vacant-building dataset; `Buildings` derives parcel dossiers from DBI
-  complaints, permits and notices of violation instead, and every classification is a
-  reading of those records rather than a finding about occupancy. 2,043 of the 3,847
-  dossiers have no City-published point and are not mapped, the bundled window starts in
-  2022, and only three rows of each kind travel with a dossier. There is no server-side
-  messaging or geocache system: private messages are self-addressed, location-locked notes
-  on this device, not messages delivered to another person or moderated by anyone else.
+- **No camera, kiosk or plate-reader layer; official documents instead.** San Francisco
+publishes a department-by-department inventory of surveillance technologies and **no
+register of camera positions**; the transport agency's reports describe systems without
+placing them, and the Police Department has stated it will not create a registry of
+non-City cameras. Night Map could also not verify any City statement about what its street
+kiosks collect — the City's privacy pages are scoped to its websites. The Dispatched Calls
+layer is a different case: it *does* plot published police records (see below). What is
+missing is any lawful published position for cameras, kiosks or readers, so rather than
+infer dots, the CCTV and Radio status panels link the official documents with what each
+one says and what it does not, and a unit test asserts that no map layer describes cameras,
+kiosks or plate readers. Two useful things requested for this release could not become
+markers for the same reason, which the guide states plainly: Recology's electronic-waste
+drop-off at 501 Tunnel Avenue is in Bayview, *outside this release's footprint*, and no San
+Francisco walk-in LifeLine enrolment address is published anywhere Night Map could verify.
+- **A live police feed is absent; police records are not refused.** The Dispatched
+  Calls layer queries the City's delayed CAD feed while it is open, drops every call the
+  City flags sensitive, removes person-describing categories, and snaps each record to
+  about 40 m. What is absent is the raw feed — live 911 audio, live police radio
+  (encrypted since 2021) and live camera streams — because San Francisco publishes no
+  lawful public source for any of them, not because the app avoids police data. The CCTV
+  and Radio panels link the official documents and say what each one does and does not
+  contain; Night Map plots no camera, kiosk or plate-reader points, because the City
+  publishes no register of their positions and inferred dots would be invented.
+  Homeless encampments are deliberately not plotted: the City's 311 log carries over
+  a thousand encampment cases a fortnight, and mapping where unhoused people sleep
+  would turn a navigation tool into a targeting tool. **A confirmed vacancy finding is
+  not built.** The map does show a reported-vacancy layer — 919 located parcels whose
+  records describe a vacant or abandoned condition — and `Buildings` derives 3,847
+  dossiers from DBI complaints, permits and notices of violation. But San Francisco
+  publishes no vacant-building dataset, so every classification is a reading of records
+  rather than a finding about occupancy. 2,043 of the 3,847 dossiers have no
+  City-published point and are not mapped, the bundled window starts in 2022, and
+  only three rows of each kind travel with a dossier. There is no server-side
+  messaging or geocache system: private messages are self-addressed, location-locked
+  notes on this device, not messages delivered to another person or moderated by
+  anyone else.
+- **Night service is a schedule, not a feed.** It is derived from one GTFS service date
+  (a weekday inside the published feed window), so holiday and weekend service can differ,
+  and a scheduled trip can be late, diverted or cancelled. The card shows the feed dates;
+  it never shows a live arrival, a vehicle position or a wait time. The SFMTA agreement may
+  change or be revoked, which is why the feed date and licence notice travel with the data.
 - Terrain is a coarse model (~7 m per pixel) drawn at **true vertical scale (×1, no
   exaggeration)**. It shows landform, not kerbs, stairs, retaining walls or whether a
   slope is walkable; a coarse elevation model is not a slope survey.
