@@ -304,6 +304,10 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const toastTimer = useRef<number | null>(null);
   const locationWatch = useRef<number | null>(null);
   const gpsFirstFix = useRef(false);
+  // A browser may report POSITION_UNAVAILABLE or TIMEOUT between good fixes
+  // (switching towers, a momentarily blocked sky view, a test override). Warn
+  // once per outage instead of dropping the lock the reader asked for.
+  const gpsOutageWarned = useRef(false);
   const settingsRef = useRef<Settings>(initialSettings);
 
   useEffect(() => {
@@ -399,6 +403,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
         reference: { coordinates: location.coordinates, label: 'Your live location' },
         settings: grantedSettings,
       }));
+      gpsOutageWarned.current = false;
       if (gpsFirstFix.current) {
         gpsFirstFix.current = false;
         notify(`GPS lock on · ±${Math.round(location.accuracy)} m. The map will follow this device until you drag it.`, 'success');
@@ -430,6 +435,16 @@ export function AppProvider({ children }: { children: ReactNode }) {
       locationWatch.current = navigator.geolocation.watchPosition(
         applyGpsFix,
         (error) => {
+          // Only a refused permission ends the lock. An unavailable or timed-out
+          // reading is transient: the watch keeps running and the next fix turns
+          // the map again, which is the behaviour the lock promises.
+          if (error.code !== error.PERMISSION_DENIED) {
+            if (!gpsOutageWarned.current) {
+              gpsOutageWarned.current = true;
+              notify('No fix for a moment. The map keeps following as soon as one arrives.', 'warn');
+            }
+            return;
+          }
           if (locationWatch.current !== null) {
             navigator.geolocation.clearWatch(locationWatch.current);
             locationWatch.current = null;
@@ -438,17 +453,9 @@ export function AppProvider({ children }: { children: ReactNode }) {
           setState((s) => ({
             ...s,
             gpsLocked: false,
-            settings: {
-              ...s.settings,
-              locationPermission: error.code === error.PERMISSION_DENIED ? 'denied' : s.settings.locationPermission,
-            },
+            settings: { ...s.settings, locationPermission: 'denied' },
           }));
-          notify(
-            error.code === error.PERMISSION_DENIED
-              ? 'Location permission was denied. GPS lock is off.'
-              : 'Could not keep a GPS lock. The map is free to move.',
-            'warn',
-          );
+          notify('Location permission was denied. GPS lock is off.', 'warn');
         },
         { enableHighAccuracy: true, timeout: 20_000, maximumAge: 0 },
       );

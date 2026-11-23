@@ -1,6 +1,12 @@
 import { expect, test } from '@playwright/test';
 import { openFieldnotes, searchAndOpen } from './helpers';
 
+// The dev server deliberately registers no service worker, so this scenario can
+// only run against the production preview (npm run build && npm run preview),
+// which is what the config starts when BASE_URL is not supplied.
+const previewPort = process.env.BASE_URL ? new URL(process.env.BASE_URL).port : '4173';
+test.skip(previewPort !== '4173', 'offline scenario needs the production preview served with a service worker');
+
 test.describe('Scenario F — connectivity loss', () => {
   test('cached shell, saved records and private notes survive offline', async ({ page, context }, testInfo) => {
     await page.goto('/');
