@@ -12,7 +12,7 @@ const registry = buildingRegistrySchema.parse(readJson('registry.json')) as unkn
 const abandoned = readJson<AbandonedBuildingFile>('abandoned.json');
 
 describe('abandoned-building map extract', () => {
-  it('contains every vacancy or abandonment dossier that has a City-published point', () => {
+  it('contains every vacancy or abandonment dossier that has a mapped position', () => {
     const located = registry.dossiers
       .filter(
         (dossier) =>

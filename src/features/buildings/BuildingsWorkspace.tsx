@@ -133,8 +133,9 @@ export function BuildingsWorkspace() {
     // The default vacancy layer would double-plot a subset of the same parcels.
     actions.setLayer('abandoned-buildings', false);
     actions.setSheet('peek');
+    const label = statusFilter === 'all' ? 'located' : buildingFilterLabel(statusFilter);
     actions.notify(
-      `${locatedForFilter.toLocaleString()} ${buildingFilterLabel(statusFilter)} dossier${locatedForFilter === 1 ? '' : 's'} with a published point on the map. The rest stay in the table.`,
+      `${locatedForFilter.toLocaleString()} ${label} dossier${locatedForFilter === 1 ? '' : 's'} with a mapped position on the map. The rest stay in the table.`,
       'success',
     );
   };
@@ -186,7 +187,7 @@ export function BuildingsWorkspace() {
         <span className="muted small">
           {query.trim()
             ? 'The map shows the whole classification; the search narrows the table only.'
-            : 'Only dossiers with a City-published point can be plotted; the rest stay in the table.'}
+            : 'Only dossiers with a mapped position can be plotted; the rest stay in the table.'}
         </span>
       </div>
 
@@ -194,7 +195,7 @@ export function BuildingsWorkspace() {
         Showing {shown.length.toLocaleString()} of {results.length.toLocaleString()} matching dossiers, ordered by
         record priority. {' '}
         {counts
-          ? `${counts.withoutCoordinates.toLocaleString()} carry no City-published point and are therefore not on the map.`
+          ? `${counts.withoutCoordinates.toLocaleString()} carry no mapped position and are therefore not on the map.`
           : ''}
       </p>
 
@@ -224,7 +225,7 @@ export function BuildingsWorkspace() {
                     <span className="building-row-meta">
                       Block {dossier.block} / lot {dossier.lot}
                       {dossier.neighborhood ? ` · ${dossier.neighborhood}` : ''}
-                      {dossier.coordinates ? '' : ' · no published point'}
+                      {dossier.coordinates ? '' : ' · no mapped position'}
                     </span>
                     <span className="building-row-counts">{buildingRecordSummary(dossier)}</span>
                     <span className="building-row-score">

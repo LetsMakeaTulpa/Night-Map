@@ -303,9 +303,3 @@ export function buildingRecordSummary(dossier: BuildingDossier): string {
   ];
   return `${rows.join(' · ')}${dossier.lastRecordAt ? ` · newest ${formatDate(dossier.lastRecordAt)}` : ''}`;
 }
-
-export function describeCoverage(dossier: BuildingDossier): string {
-  const precision = LOCATION_PRECISION_LABELS[dossier.locationPrecision];
-  if (!dossier.coordinates) return precision;
-  return `${precision}`;
-}

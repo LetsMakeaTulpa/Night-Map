@@ -48,7 +48,7 @@ export function MapTargetsPanel({
     {
       layer: 'abandoned-buildings',
       label: 'Abandoned & vacant buildings',
-      detail: 'City vacancy notices with a published point, blue glow',
+      detail: 'City vacancy records with a mapped position, blue glow',
       count: isOn('abandoned-buildings') ? loaded(liveCounts.abandoned) : undefined,
     },
     {

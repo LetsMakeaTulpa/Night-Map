@@ -2,7 +2,7 @@
 
 Status of the central-San Francisco vertical slice, grouped by outcome. **Done**
 means implemented and verified in this working tree; it does not mean the current
-build has been deployed. Last reviewed **2026-11-17**.
+build has been deployed. Last reviewed **2026-11-24**.
 
 Sources: the project requirements, the working tree, and
 [the README](README.md#known-limitations).
@@ -13,7 +13,8 @@ Sources: the project requirements, the working tree, and
   footprint, plus 605 Muni stops. Prices, payment rules, ID and intake
   requirements carry the page and date they came from.
 - [x] **Building registry.** 3,847 parcel dossiers joined from DBI complaints,
-  permits and notices of violation. 1,804 have a City-published point; 2,043 stay
+  permits and notices of violation. 1,804 have a mapped position (1,740 City
+  parcel points, 64 labelled block centroids); 2,043 stay
   searchable in the table and are deliberately not plotted. Classifications
   describe records, never occupancy.
 - [x] **Nocturnal basemap, terrain and 3D.** Dark vector basemap with a very dark
@@ -92,7 +93,7 @@ Sources: the project requirements, the working tree, and
   no `VITE_MAPILLARY_TOKEN` is set, so imagery has not been verified against the
   live API.
 - [ ] **Registry coverage is incomplete by source.** 2,043 of 3,847 dossiers have
-  no City-published point; the window starts in 2022; only three rows of each kind
+  no mapped position; the window starts in 2022; only three rows of each kind
   travel with a dossier. The full sets remain in the City datasets.
 - [ ] **Reported activity is delayed.** Dispatched calls are closed-only and about
   ten minutes behind; 311 is a nightly snapshot. Neither is a live incident feed.

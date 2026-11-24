@@ -167,7 +167,7 @@ export const LAYERS: (LayerDefinition & { defaultOpacity?: number })[] = [
     id: 'abandoned-buildings',
     name: 'Abandoned & vacant buildings',
     description:
-      'Parcels with a City complaint or notice describing a vacant, abandoned or derelict condition, marked with a blue glow. Only parcels the City placed on the map are plotted; dossiers with no published point stay in the Buildings table. A marker is a record, not a confirmed empty building.',
+      'Parcels with a City complaint or notice describing a vacant, abandoned or derelict condition, marked with a blue glow. Only parcels with a mapped position are plotted; dossiers without one stay in the Buildings table. A marker is a record, not a confirmed empty building.',
     group: 'context',
     sourceIds: ['src:sfgov-dbi-complaints', 'src:sfgov-dbi-novs'],
     defaultVisible: true,

@@ -2203,7 +2203,7 @@ export function MapView({ views, onOpenLayers }: MapViewProps) {
           <span className="map-scale-note" data-testid="registry-status">
             {registryState.error
               ? `Building registry unavailable — ${registryState.error}`
-              : `${registryState.loaded} parcel dossiers with a published point${state.buildingFilter === 'all' ? '' : ` · ${buildingFilterLabel(state.buildingFilter)}`}`}
+              : `${registryState.loaded} parcel dossiers with a mapped position${state.buildingFilter === 'all' ? '' : ` · ${buildingFilterLabel(state.buildingFilter)}`}`}
           </span>
         )}
         {abandonedOn && (

@@ -64,7 +64,7 @@ export function StopCard({ stop, onClose }: { stop: TransitStop; onClose: () => 
           </ul>
           <p className="stop-service-window">
             {service.departures} scheduled {service.departures === 1 ? 'departure' : 'departures'} between 22:00 and
-            05:00 the following morning. Headways are an average of the scheduled gaps, not a promise of a wait.
+            05:00 the following morning. Headways are the median of the scheduled gaps, not a promise of a wait.
           </p>
         </>
       ) : unmatched ? (
@@ -79,7 +79,7 @@ export function StopCard({ stop, onClose }: { stop: TransitStop; onClose: () => 
       )}
 
       <p className="stop-scheduled" data-testid="stop-scheduled">
-        Scheduled data for {meta.serviceDay.toLowerCase()} {serviceDate}, from the SFMTA GTFS feed covering{' '}
+        Scheduled data for {serviceDate}, from the SFMTA GTFS feed covering{' '}
         {formatServiceDate(meta.feedStartDate)} – {formatServiceDate(meta.feedEndDate)}. Not live: a scheduled trip
         can be late, diverted or cancelled, and this card cannot see any of that.
       </p>
