@@ -1,5 +1,5 @@
 {
- "generatedAt": "2026-11-26T01:04:46.499Z",
+ "generatedAt": "2026-11-27T01:06:09.646Z",
  "generatedBy": "node scripts/fetch-incidents.mjs",
  "coordinatePrecisionMetres": 40,
  "droppedFields": [
@@ -48,16 +48,16 @@
    "sourceId": "src:sfgov-calls-realtime",
    "dataset": "gnap-fj3t",
    "name": "Law Enforcement Dispatched Calls for Service: Real-Time",
-   "rows": 463,
+   "rows": 413,
    "window": "dispatched calls that closed within 48 hours of retrieval",
-   "newest": "2026-11-25T16:37:50.000",
-   "oldest": "2026-11-24T01:26:44.000",
+   "newest": "2026-11-26T16:44:37.000",
+   "oldest": "2026-11-25T01:31:40.000",
    "lag": "about 8 hours old",
    "dropped": {
-    "sensitiveCall": 962,
-    "excludedCategory": 586,
-    "noLocation": 17,
-    "outsideFootprint": 901
+    "sensitiveCall": 906,
+    "excludedCategory": 460,
+    "noLocation": 12,
+    "outsideFootprint": 754
    },
    "notLive": "This is not live 911 and carries no audio. It is a published record of dispatched calls, and it is incomplete while calls are open."
   },
@@ -67,14 +67,14 @@
    "sourceId": "src:sfgov-cases311",
    "dataset": "vw6y-z8j6",
    "name": "311 Cases",
-   "rows": 2476,
+   "rows": 2420,
    "window": "311 cases opened in the last 7 days, capped at 400 per service type",
-   "newest": "2026-11-24T23:59:03.000",
-   "oldest": "2026-11-19T01:11:52.000",
-   "lag": "about 25 hours old",
+   "newest": "2026-11-25T23:20:42.000",
+   "oldest": "2026-11-20T01:51:14.000",
+   "lag": "about 26 hours old",
    "dropped": {
-    "excludedCategory": 732,
-    "outsideFootprint": 901
+    "excludedCategory": 727,
+    "outsideFootprint": 754
    },
    "notLive": "The dataset is published nightly; a request may already be resolved or scheduled."
   }
